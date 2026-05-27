@@ -1,0 +1,48 @@
+name: 📦 SP-API Fetch
+
+on:
+  schedule:
+    - cron: "0 6 * * *"   # täglich 06:00 UTC
+  workflow_dispatch:        # manueller Start jederzeit möglich
+
+jobs:
+  fetch-sp-data:
+    name: Fetch SP-API Data
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Python Setup
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: "pip"
+
+      - name: Dependencies installieren
+        run: pip install -r requirements.txt
+
+      - name: SP-Daten holen
+        env:
+          SP_CLIENT_ID:      ${{ secrets.SP_CLIENT_ID }}
+          SP_CLIENT_SECRET:  ${{ secrets.SP_CLIENT_SECRET }}
+          SP_REFRESH_TOKEN:  ${{ secrets.SP_REFRESH_TOKEN }}
+          SP_MARKETPLACE_ID: ${{ secrets.SP_MARKETPLACE_ID }}
+          SP_SELLER_ID:      ${{ secrets.SP_SELLER_ID }}
+        run: python pipeline/fetchers/sp_fetcher.py
+
+      - name: Output als Artifact speichern
+        uses: actions/upload-artifact@v4
+        with:
+          name: sp-data-${{ github.run_id }}
+          path: pipeline/output/sp_*.json
+          retention-days: 7
+
+      - name: Fehler melden
+        if: failure()
+        run: |
+          echo "❌ SP-Fetch fehlgeschlagen!"
+          echo "Bitte GitHub Actions Log prüfen."
+          # Optional: curl Webhook für Slack/Teams-Benachrichtigung
