@@ -21,7 +21,7 @@ jobs:
           python-version: "3.12"
 
       - name: Dependencies installieren
-        run: pip install -r requirements.txt
+        run: pip install requests python-dateutil
 
       - name: SP-Daten holen
         env:
