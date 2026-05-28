@@ -1,17 +1,18 @@
 const TENANT_ID     = process.env.AZURE_TENANT_ID
 const CLIENT_ID     = process.env.AZURE_CLIENT_ID
 const CLIENT_SECRET = process.env.AZURE_CLIENT_SECRET
-
-const DRIVE_ID = 'b!Cpu60gLQO0aKgzpcZr_9xnje1Mk_6DJCh1ar8P_usBYY3V5AQ_xNQr39iNbJTHgE'
+const DRIVE_ID      = 'b!Cpu60gLQO0aKgzpcZr_9xnje1Mk_6DJCh1ar8P_usBYY3V5AQ_xNQr39iNbJTHgE'
+const ROOT          = 'Dr.Kaske Daten/Smile/Smile Ideas/2026/Amazon/Amazon API Output/Raw data'
 
 const FILE_MAP = {
-  ads:           'Dr.Kaske Daten/Smile/Smile Ideas/2026/Amazon/Amazon API Output/Raw data/Ad Campaigns/Amazon_Ads_Data.xlsx',
-  brand:         'Dr.Kaske Daten/Smile/Smile Ideas/2026/Amazon/Amazon API Output/Raw data/Brand Analytics/BrandAnalytics_All.xlsx',
-  basket:        'Dr.Kaske Daten/Smile/Smile Ideas/2026/Amazon/Amazon API Output/Raw data/Market Basket/MarketBasket_All.xlsx',
-  repeat:        'Dr.Kaske Daten/Smile/Smile Ideas/2026/Amazon/Amazon API Output/Raw data/Repeat Purchase/RepeatPurchase_All.xlsx',
-  searchcatalog: 'Dr.Kaske Daten/Smile/Smile Ideas/2026/Amazon/Amazon API Output/Raw data/Search Catalog Performance/SearchCatalogPerformance_All.xlsx',
-  searchquery:   'Dr.Kaske Daten/Smile/Smile Ideas/2026/Amazon/Amazon API Output/Raw data/Search Query Performance/SearchQueryPerformance_All.xlsx',
-  traffic:       'Dr.Kaske Daten/Smile/Smile Ideas/2026/Amazon/Amazon API Output/Raw data/Verkaufe Traffic Monatlich/VerkaufeTraffic_Monatlich.xlsx',
+  ads:           'Ad Campaigns/Amazon_Ads_Data.xlsx',
+  brand:         'Brand Analytics/BrandAnalytics_All.xlsx',
+  basket:        'Market Basket/MarketBasket_All.xlsx',
+  repeat:        'Repeat Purchase/RepeatPurchase_All.xlsx',
+  searchcatalog: 'Search Catalog Performance/SearchCatalogPerformance_All.xlsx',
+  searchquery:   'Search Query Performance/SearchQueryPerformance_All.xlsx',
+  traffic:       'Verkaufe Traffic Monatlich/VerkaufeTraffic_Monatlich.xlsx',
+  catalog:       'Produkt Katalog/Produkt_Katalog.xlsx',
 }
 
 async function getToken() {
@@ -24,14 +25,11 @@ async function getToken() {
 }
 
 async function getFileBuffer(token, filePath) {
-  const parts   = filePath.split('/')
+  const parts   = `${ROOT}/${filePath}`.split('/')
   const encoded = parts.map(p => encodeURIComponent(p)).join('/')
   const url     = `https://graph.microsoft.com/v1.0/drives/${DRIVE_ID}/root:/${encoded}:/content`
   const res     = await fetch(url, { headers: { Authorization: `Bearer ${token}` } })
-  if (!res.ok) {
-    const body = await res.text()
-    throw new Error(`File error: ${res.status} – ${body}`)
-  }
+  if (!res.ok) throw new Error(`File error: ${res.status} – ${filePath}`)
   return res.arrayBuffer()
 }
 
