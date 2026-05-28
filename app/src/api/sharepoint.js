@@ -31,11 +31,13 @@ export const api = {
   catalog:       () => fetchDataset('catalog'),
 
   async loadAll() {
-    const [ads, brand, basket, repeat, searchCatalog, searchQuery, traffic, catalog] =
+    const [ads, brand, basket, repeat, searchCatalog, searchQuery, traffic, catalogResult] =
       await Promise.all([
         this.ads(), this.brand(), this.basket(), this.repeat(),
-        this.searchCatalog(), this.searchQuery(), this.traffic(), this.catalog(),
+        this.searchCatalog(), this.searchQuery(), this.traffic(),
+        this.catalog().catch(() => ({ 'Produkt_Katalog': [] })), // ← Fehler ignorieren
       ])
+    const catalog = catalogResult
     return { ads, brand, basket, repeat, searchCatalog, searchQuery, traffic, catalog }
   }
 }
