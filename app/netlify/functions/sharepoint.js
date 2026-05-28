@@ -2,6 +2,18 @@ const TENANT_ID     = process.env.AZURE_TENANT_ID
 const CLIENT_ID     = process.env.AZURE_CLIENT_ID
 const CLIENT_SECRET = process.env.AZURE_CLIENT_SECRET
 
+const DRIVE_ID = 'b!Cpu60gLQO0aKgzpcZr_9xnje1Mk_6DJCh1ar8P_usBYY3V5AQ_xNQr39iNbJTHgE'
+
+const FILE_MAP = {
+  ads:           'Dr.Kaske Daten/Smile/Smile Ideas/2026/Amazon/Amazon API Output/Raw data/Ad Campaigns/Amazon_Ads_Data.xlsx',
+  brand:         'Dr.Kaske Daten/Smile/Smile Ideas/2026/Amazon/Amazon API Output/Raw data/Brand Analytics/BrandAnalytics_All.xlsx',
+  basket:        'Dr.Kaske Daten/Smile/Smile Ideas/2026/Amazon/Amazon API Output/Raw data/Market Basket/MarketBasket_All.xlsx',
+  repeat:        'Dr.Kaske Daten/Smile/Smile Ideas/2026/Amazon/Amazon API Output/Raw data/Repeat Purchase/RepeatPurchase_All.xlsx',
+  searchcatalog: 'Dr.Kaske Daten/Smile/Smile Ideas/2026/Amazon/Amazon API Output/Raw data/Search Catalog Performance/SearchCatalogPerformance_All.xlsx',
+  searchquery:   'Dr.Kaske Daten/Smile/Smile Ideas/2026/Amazon/Amazon API Output/Raw data/Search Query Performance/SearchQueryPerformance_All.xlsx',
+  traffic:       'Dr.Kaske Daten/Smile/Smile Ideas/2026/Amazon/Amazon API Output/Raw data/Verkaufe Traffic Monatlich/VerkaufeTraffic_Monatlich.xlsx',
+}
+
 async function getToken() {
   const res = await fetch(`https://login.microsoftonline.com/${TENANT_ID}/oauth2/v2.0/token`, {
     method: 'POST',
@@ -11,34 +23,30 @@ async function getToken() {
   return (await res.json()).access_token
 }
 
+async function getFileBuffer(token, filePath) {
+  const parts   = filePath.split('/')
+  const encoded = parts.map(p => encodeURIComponent(p)).join('/')
+  const url     = `https://graph.microsoft.com/v1.0/drives/${DRIVE_ID}/root:/${encoded}:/content`
+  const res     = await fetch(url, { headers: { Authorization: `Bearer ${token}` } })
+  if (!res.ok) {
+    const body = await res.text()
+    throw new Error(`File error: ${res.status} – ${body}`)
+  }
+  return res.arrayBuffer()
+}
+
 export const handler = async (event) => {
   const headers = { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' }
-  const debug = event.queryStringParameters?.debug
-
+  const dataset = event.queryStringParameters?.dataset
+  if (!dataset || !FILE_MAP[dataset]) {
+    return { statusCode: 400, headers, body: JSON.stringify({ error: `Unbekanntes Dataset: ${dataset}` }) }
+  }
   try {
-    const token = await getToken()
-
-    if (debug === 'drives') {
-      const siteRes = await fetch(`https://graph.microsoft.com/v1.0/sites/kaskegroup.sharepoint.com:/sites/Dr.Kaske`, { headers: { Authorization: `Bearer ${token}` } })
-      const site = await siteRes.json()
-      const drivesRes = await fetch(`https://graph.microsoft.com/v1.0/sites/${site.id}/drives`, { headers: { Authorization: `Bearer ${token}` } })
-      const drives = await drivesRes.json()
-      return { statusCode: 200, headers, body: JSON.stringify({ siteId: site.id, drives: drives.value.map(d => ({ id: d.id, name: d.name, type: d.driveType })) }) }
-    }
-
-    if (debug === 'root') {
-      const siteRes = await fetch(`https://graph.microsoft.com/v1.0/sites/kaskegroup.sharepoint.com:/sites/Dr.Kaske`, { headers: { Authorization: `Bearer ${token}` } })
-      const site = await siteRes.json()
-      const drivesRes = await fetch(`https://graph.microsoft.com/v1.0/sites/${site.id}/drives`, { headers: { Authorization: `Bearer ${token}` } })
-      const drives = await drivesRes.json()
-      const drive = drives.value.find(d => d.name === 'Freigegebene Dokumente' || d.driveType === 'documentLibrary') || drives.value[0]
-      const rootRes = await fetch(`https://graph.microsoft.com/v1.0/drives/${drive.id}/root/children`, { headers: { Authorization: `Bearer ${token}` } })
-      const root = await rootRes.json()
-      return { statusCode: 200, headers, body: JSON.stringify({ driveId: drive.id, driveName: drive.name, rootFolders: root.value?.map(f => f.name) }) }
-    }
-
-    return { statusCode: 200, headers, body: JSON.stringify({ status: 'ok' }) }
+    const token  = await getToken()
+    const buffer = await getFileBuffer(token, FILE_MAP[dataset])
+    return { statusCode: 200, headers, body: JSON.stringify({ dataset, data: Buffer.from(buffer).toString('base64') }) }
   } catch (err) {
+    console.error(err)
     return { statusCode: 500, headers, body: JSON.stringify({ error: err.message }) }
   }
 }
