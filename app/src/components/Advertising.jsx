@@ -2,7 +2,6 @@ import { useMemo, useRef } from 'react'
 import { Bar } from 'react-chartjs-2'
 import { Chart, CategoryScale, LinearScale, BarElement, Tooltip, Legend } from 'chart.js'
 import { useFilters } from '../context/FilterContext.jsx'
-import FilterBar from './FilterBar.jsx'
 import { downloadCSV, downloadChartPNG } from '../utils/export.js'
 
 Chart.register(CategoryScale, LinearScale, BarElement, Tooltip, Legend)
@@ -15,19 +14,19 @@ export default function Advertising({ data }) {
   const { filterByAsin } = useFilters()
   const chartRef = useRef()
 
-  const campaigns  =data.ads?.campaigns  ??[]
-  const keywords   =data.ads?.Keywords   ??[]
-  const searchTerms=useMemo(()=>filterByAsin(data.ads?.SearchTerms??[],['query']),[data.ads,filterByAsin])
+  const campaigns   = data.ads?.campaigns   ?? []
+  const keywords    = data.ads?.Keywords    ?? []
+  const searchTerms = useMemo(() => filterByAsin(data.ads?.SearchTerms??[],['query']), [data.ads, filterByAsin])
 
-  const totals=useMemo(()=>{
-    const spend =searchTerms.reduce((s,r)=>s+(Number(r.spend)||0),0)
-    const sales =searchTerms.reduce((s,r)=>s+(Number(r.sales)||0),0)
-    const clicks=searchTerms.reduce((s,r)=>s+(Number(r.clicks)||0),0)
-    const impr  =searchTerms.reduce((s,r)=>s+(Number(r.impressions)||0),0)
+  const totals = useMemo(() => {
+    const spend  = searchTerms.reduce((s,r)=>s+(Number(r.spend)||0),0)
+    const sales  = searchTerms.reduce((s,r)=>s+(Number(r.sales)||0),0)
+    const clicks = searchTerms.reduce((s,r)=>s+(Number(r.clicks)||0),0)
+    const impr   = searchTerms.reduce((s,r)=>s+(Number(r.impressions)||0),0)
     return{spend,sales,clicks,impr,acos:sales>0?spend/sales*100:0,roas:spend>0?sales/spend:0,ctr:impr>0?clicks/impr*100:0}
-  },[searchTerms])
+  }, [searchTerms])
 
-  const topTerms=useMemo(()=>
+  const topTerms = useMemo(()=>
     [...searchTerms].map(r=>({
       query:r.query,impressions:Number(r.impressions)||0,clicks:Number(r.clicks)||0,
       spend:Number(r.spend)||0,sales:Number(r.sales)||0,
@@ -35,11 +34,11 @@ export default function Advertising({ data }) {
     })).sort((a,b)=>b.sales-a.sales).slice(0,20)
   ,[searchTerms])
 
-  const chartData=useMemo(()=>{
+  const chartData = useMemo(()=>{
     const t=topTerms.slice(0,8)
     return{labels:t.map(x=>x.query?.slice(0,18)??'–'),datasets:[
-      {label:'Spend (€)',data:t.map(x=>+x.spend.toFixed(2)),backgroundColor:'rgba(37,99,235,0.5)'},
-      {label:'Sales (€)',data:t.map(x=>+x.sales.toFixed(2)),backgroundColor:'rgba(22,163,74,0.5)'},
+      {label:'Spend (€)',data:t.map(x=>+x.spend.toFixed(2)),backgroundColor:'rgba(20,184,166,0.5)'},
+      {label:'Sales (€)',data:t.map(x=>+x.sales.toFixed(2)),backgroundColor:'rgba(14,165,233,0.5)'},
     ]}
   },[topTerms])
 
@@ -50,7 +49,6 @@ export default function Advertising({ data }) {
 
   return(
     <div>
-      <FilterBar onExport={exportTerms} exportLabel="Search Terms als CSV"/>
       <div className="kpi-grid">
         <div className="kpi"><div className="kpi-label">Ad Spend</div><div className="kpi-val">{eur(totals.spend)}</div></div>
         <div className="kpi"><div className="kpi-label">Ad Sales</div><div className="kpi-val">{eur(totals.sales)}</div></div>
@@ -62,14 +60,17 @@ export default function Advertising({ data }) {
       <div className="card-grid">
         <div className="card card-full">
           <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:'1rem'}}>
-            <div className="card-title" style={{margin:0}}>Spend vs. Sales</div>
-            <button onClick={()=>downloadChartPNG(chartRef,'ads_chart.png')} style={cb}>↓ PNG</button>
+            <div className="card-title" style={{margin:0}}>Spend vs. Sales – Top Search Terms</div>
+            <button className="chart-btn" onClick={()=>downloadChartPNG(chartRef,'ads_chart.png')}>↓ PNG</button>
           </div>
           <div className="chart-box"><Bar ref={chartRef} data={chartData} options={chartOpts}/></div>
         </div>
       </div>
       <div className="card" style={{marginBottom:'1rem'}}>
-        <div className="card-title">Search Terms ({topTerms.length})</div>
+        <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:'1rem'}}>
+          <div className="card-title" style={{margin:0}}>Search Terms ({topTerms.length})</div>
+          <button className="chart-btn" onClick={exportTerms}>↓ CSV</button>
+        </div>
         <div className="tbl-wrap">
           <table>
             <thead><tr><th>Query</th><th>Impressions</th><th>Klicks</th><th>Spend</th><th>Sales</th><th>ACoS</th></tr></thead>
@@ -88,7 +89,7 @@ export default function Advertising({ data }) {
         <div className="card">
           <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:'1rem'}}>
             <div className="card-title" style={{margin:0}}>Kampagnen ({campaigns.length})</div>
-            <button onClick={exportCamp} style={cb}>↓ CSV</button>
+            <button className="chart-btn" onClick={exportCamp}>↓ CSV</button>
           </div>
           <div className="tbl-wrap">
             <table>
@@ -123,4 +124,3 @@ export default function Advertising({ data }) {
     </div>
   )
 }
-const cb={fontSize:11,padding:'3px 8px',borderRadius:4,border:'1px solid var(--border2)',background:'var(--surface2)',cursor:'pointer',color:'var(--text2)'}
