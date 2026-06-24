@@ -1,31 +1,28 @@
 import { useState, useEffect } from 'react'
 import { useIsAuthenticated, useMsal } from '@azure/msal-react'
-import { loginRequest, isAllowedEmail } from './auth/msalConfig.js'
+import { isAllowedEmail } from './auth/msalConfig.js'
 import { api } from './api/sharepoint.js'
 import { FilterProvider } from './context/FilterContext.jsx'
+import Sidebar from './components/Sidebar.jsx'
+import Toolbar from './components/Toolbar.jsx'
 import Overview from './components/Overview.jsx'
 import Advertising from './components/Advertising.jsx'
 import Search from './components/Search.jsx'
 import Products from './components/Products.jsx'
 import Insights from './components/Insights.jsx'
+import AskDataTrail from './components/AskDataTrail.jsx'
 import Login from './components/Login.jsx'
 import './app.css'
-
-const TABS = [
-  { id: 'overview',  label: 'Übersicht',   icon: '◈' },
-  { id: 'ads',       label: 'Advertising', icon: '◎' },
-  { id: 'search',    label: 'Search',      icon: '⊕' },
-  { id: 'products',  label: 'Produkte',    icon: '▣' },
-  { id: 'insights',  label: 'AI Insights', icon: '✦' },
-]
 
 export default function App() {
   const isAuthenticated        = useIsAuthenticated()
   const { instance, accounts } = useMsal()
   const [tab, setTab]          = useState('overview')
+  const [collapsed, setCollapsed] = useState(false)
   const [data, setData]        = useState(null)
   const [error, setError]      = useState(null)
   const [loading, setLoading]  = useState(false)
+  const [uploadedFiles, setUploadedFiles] = useState([])
 
   const account = accounts[0]
   const email   = account?.username ?? ''
@@ -44,49 +41,29 @@ export default function App() {
   if (!isAuthenticated) return <Login />
   if (!allowed)         return <Login denied />
 
-  const now = new Date().toLocaleString('de-DE', { dateStyle: 'short', timeStyle: 'short' })
-  const catalog = data?.catalog?.['Produkt_Katalog'] ?? data?.catalog?.['Sheet1'] ?? []
+  const catalog = data?.catalog?.['Sheet1'] ?? data?.catalog?.['Produkt_Katalog'] ?? []
 
   return (
-    <FilterProvider catalog={catalog}>
-      <div className="layout">
-        <header className="header">
-          <div className="header-inner">
-            <div className="logo">
-              <span className="logo-icon">▦</span>
-              <span className="logo-text">Amazon Dashboard</span>
-              <span className="logo-sub">Kaske Group</span>
-            </div>
-            <div className="header-meta" style={{display:'flex',alignItems:'center',gap:8}}>
-              <span className="pill">Stand: {now}</span>
-              <span className="pill" style={{cursor:'pointer'}} onClick={() => instance.logoutPopup()}>
-                {email} ↩
-              </span>
-            </div>
+    <FilterProvider catalog={catalog} uploadedFiles={uploadedFiles}>
+      <div className="shell">
+        <Sidebar tab={tab} setTab={setTab} collapsed={collapsed} setCollapsed={setCollapsed} email={email} onLogout={() => instance.logoutPopup()} />
+        <div className={`shell-main ${collapsed ? 'collapsed' : ''}`}>
+          <Toolbar data={data} uploadedFiles={uploadedFiles} onUpload={f => setUploadedFiles(p => [...p, f])} />
+          <div className="shell-content">
+            {loading && <div className="state-box"><div className="spinner"/><p>Lade Daten aus SharePoint…</p></div>}
+            {error   && <div className="state-box error"><p className="error-title">Verbindungsfehler</p><p className="error-msg">{error}</p></div>}
+            {data && !loading && (
+              <>
+                {tab === 'overview'  && <Overview    data={data}/>}
+                {tab === 'ads'       && <Advertising data={data}/>}
+                {tab === 'search'    && <Search      data={data}/>}
+                {tab === 'products'  && <Products    data={data}/>}
+                {tab === 'insights'  && <Insights    data={data}/>}
+              </>
+            )}
           </div>
-        </header>
-        <nav className="nav">
-          <div className="nav-inner">
-            {TABS.map(t => (
-              <button key={t.id} className={`nav-btn ${tab===t.id?'active':''}`} onClick={()=>setTab(t.id)}>
-                <span className="nav-icon">{t.icon}</span>{t.label}
-              </button>
-            ))}
-          </div>
-        </nav>
-        <main className="main">
-          {loading && <div className="state-box"><div className="spinner"/><p>Lade Daten aus SharePoint…</p></div>}
-          {error   && <div className="state-box error"><p className="error-title">Verbindungsfehler</p><p className="error-msg">{error}</p></div>}
-          {data && !loading && (
-            <>
-              {tab==='overview' && <Overview    data={data}/>}
-              {tab==='ads'      && <Advertising data={data}/>}
-              {tab==='search'   && <Search      data={data}/>}
-              {tab==='products' && <Products    data={data}/>}
-              {tab==='insights' && <Insights    data={data}/>}
-            </>
-          )}
-        </main>
+        </div>
+        {data && <AskDataTrail data={data} />}
       </div>
     </FilterProvider>
   )
