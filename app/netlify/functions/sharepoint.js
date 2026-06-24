@@ -12,7 +12,7 @@ const FILE_MAP = {
   searchcatalog: 'Search Catalog Performance/SearchCatalogPerformance_All.xlsx',
   searchquery:   'Search Query Performance/SearchQueryPerformance_All.xlsx',
   traffic:       'Verkaufe Traffic Monatlich/VerkaufeTraffic_Monatlich.xlsx',
-  catalog:       'Produkt Katalog/Produkt_Katalog.xlsx',
+  catalog:       'Produkt_Katalog/Produkt_Katalog.xlsx',
 }
 
 async function getToken() {
