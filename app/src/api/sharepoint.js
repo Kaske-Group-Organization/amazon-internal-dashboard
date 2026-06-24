@@ -39,7 +39,29 @@ export const api = {
   repeat()        { return fetchAndMerge('repeat',        'repeat_hist',        'RepeatPurchase') },
   searchCatalog() { return fetchAndMerge('searchcatalog', 'searchcatalog_hist', 'SearchCatalogPerformance_All') },
   searchQuery()   { return fetchAndMerge('searchquery',   'searchquery_hist',   'SearchQueryPerformance') },
-  traffic()       { return fetchAndMerge('traffic',       'traffic_hist',       'Nach ASIN') },
+
+  // Traffic: Tagesaktuelle Daten aus "Nach Datum+ASIN"
+  // Historische Daten aus unserem Historisch-File (hat "Nach ASIN" Sheet mit Von/Bis)
+  async traffic() {
+    const [current, hist] = await Promise.allSettled([
+      fetchDataset('traffic'),
+      fetchDataset('traffic_hist'),
+    ])
+    // Aktuelle tagesaktuelle Daten
+    const dailyRows = current.status==='fulfilled'
+      ? (current.value['Nach Datum+ASIN'] ?? []).map(r => ({
+          ...r,
+          'Child ASIN': r['Child ASIN'] || r['Parent ASIN'],
+          'Von':        r['Datum'],
+          'Bis':        r['Datum'],
+        }))
+      : []
+    // Historische Monatsdaten
+    const histRows = hist.status==='fulfilled'
+      ? (hist.value['Nach ASIN'] ?? [])
+      : []
+    return { 'Nach ASIN': [...histRows, ...dailyRows] }
+  },
 
   async loadAll() {
     const [ads, brand, basket, repeat, searchCatalog, searchQuery, traffic, catalog] =
