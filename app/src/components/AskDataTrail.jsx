@@ -14,21 +14,16 @@ function buildContext(data) {
 
     const asinMap = {}
     traffic.forEach(r => {
-      const a = r['Child ASIN']||r['Parent ASIN']; if(!a) return
-      if(!asinMap[a]) asinMap[a]=0
+      const a = r['Child ASIN']||r['Parent ASIN']
+      if (!a) return
+      if (!asinMap[a]) asinMap[a] = 0
       asinMap[a] += Number(r['Umsatz (EUR)'])||0
     })
-    const topAsins = Object.entries(asinMap).sort((a,b)=>b[1]-a[1]).slice(0,5)
-
-    const topTerms = [...searchTerms]
-      .sort((a,b)=>(Number(b.sales)||0)-(Number(a.sales)||0)).slice(0,5)
-
-    const wastedSpend = searchTerms
-      .filter(r=>(Number(r.spend)||0)>5&&(Number(r.sales)||0)===0)
-      .reduce((s,r)=>s+(Number(r.spend)||0),0)
+    const topAsins   = Object.entries(asinMap).sort((a,b)=>b[1]-a[1]).slice(0,5)
+    const topTerms   = [...searchTerms].sort((a,b)=>(Number(b.sales)||0)-(Number(a.sales)||0)).slice(0,5)
+    const wastedSpend = searchTerms.filter(r=>(Number(r.spend)||0)>5&&(Number(r.sales)||0)===0).reduce((s,r)=>s+(Number(r.spend)||0),0)
 
     return `KASKE GROUP – AMAZON DASHBOARD
-Zeitraum: alle verfügbaren Daten
 
 ÜBERSICHT:
 - Gesamtumsatz: €${revenue.toFixed(0)}
@@ -43,10 +38,10 @@ ADVERTISING:
 - ROAS: ${spend>0?(adSales/spend).toFixed(2):'N/A'}x
 - Verschwendeter Spend (0 Sales): €${wastedSpend.toFixed(2)}
 
-TOP 5 ASINS NACH UMSATZ:
+TOP 5 ASINS:
 ${topAsins.map(([a,r])=>`- ${a}: €${r.toFixed(0)}`).join('\n')}
 
-TOP 5 SEARCH TERMS NACH SALES:
+TOP 5 SEARCH TERMS:
 ${topTerms.map(r=>`- "${r.query}": Sales €${Number(r.sales).toFixed(2)}, Spend €${Number(r.spend).toFixed(2)}`).join('\n')}`
   } catch {
     return 'Dashboard-Daten konnten nicht geladen werden.'
@@ -81,7 +76,6 @@ export default function AskDataTrail({ data }) {
     setMessages(prev => [...prev, userMsg])
     setInput('')
     setLoading(true)
-
     try {
       const res = await fetch(`${BASE}/chat`, {
         method:  'POST',
@@ -91,22 +85,14 @@ export default function AskDataTrail({ data }) {
           dataContext: buildContext(data),
         }),
       })
-
       const json = await res.json()
-
       if (!res.ok || json.error) {
-        setMessages(prev => [...prev, {
-          role: 'assistant',
-          content: `Fehler: ${json.error ?? `HTTP ${res.status}`}`,
-        }])
+        setMessages(prev => [...prev, { role: 'assistant', content: `Fehler: ${json.error ?? `HTTP ${res.status}`}` }])
       } else {
         setMessages(prev => [...prev, { role: 'assistant', content: json.text }])
       }
     } catch (err) {
-      setMessages(prev => [...prev, {
-        role: 'assistant',
-        content: `Verbindungsfehler: ${err.message}`,
-      }])
+      setMessages(prev => [...prev, { role: 'assistant', content: `Verbindungsfehler: ${err.message}` }])
     } finally {
       setLoading(false)
     }
@@ -114,4 +100,54 @@ export default function AskDataTrail({ data }) {
 
   return (
     <>
-      <button className="ask-fab" onClick={() =>
+      <button className="ask-fab" onClick={() => setOpen(!open)}>
+        <span className="ask-fab-icon">✦</span>
+        Ask DataTrail
+      </button>
+
+      {open && (
+        <div className="ask-panel">
+          <div className="ask-header">
+            <div className="ask-header-left">
+              <span className="ask-header-icon">✦</span>
+              <div>
+                <div className="ask-header-title">Ask DataTrail</div>
+                <div className="ask-header-sub">Du bist im Amazon Dashboard</div>
+              </div>
+            </div>
+            <button className="ask-close" onClick={() => setOpen(false)}>✕</button>
+          </div>
+
+          <div className="ask-messages">
+            {messages.length === 0 && (
+              <div className="ask-welcome">
+                <p>Frag mich alles über deine Amazon-Daten — ich liefere Zahlen und Insights direkt im Chat.</p>
+                <div className="ask-suggestions-label">VORSCHLÄGE</div>
+                {SUGGESTIONS.map(s => (
+                  <button key={s} className="ask-suggestion" onClick={() => send(s)}>{s}</button>
+                ))}
+              </div>
+            )}
+            {messages.map((m,i) => (
+              <div key={i} className={`ask-msg ${m.role}`}>{m.content}</div>
+            ))}
+            {loading && <div className="ask-msg assistant ask-loading">…</div>}
+            <div ref={bottomRef}/>
+          </div>
+
+          <div className="ask-input-row">
+            <input
+              className="ask-input"
+              type="text"
+              placeholder="Frage stellen…"
+              value={input}
+              onChange={e => setInput(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && send(input)}
+            />
+            <button className="ask-send" onClick={() => send(input)} disabled={loading}>▶</button>
+          </div>
+        </div>
+      )}
+    </>
+  )
+}
