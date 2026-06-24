@@ -1,6 +1,5 @@
 import { useMemo } from 'react'
 import { useFilters } from '../context/FilterContext.jsx'
-import FilterBar from './FilterBar.jsx'
 import { downloadCSV } from '../utils/export.js'
 
 const fmt=(n,d=0)=>n==null||isNaN(n)?'–':new Intl.NumberFormat('de-DE',{minimumFractionDigits:d,maximumFractionDigits:d}).format(n)
@@ -10,13 +9,13 @@ const pct=n=>`${fmt(n,1)}%`
 export default function Search({ data }) {
   const { filterByDate, filterByAsin, getTitle, getShortTitle } = useFilters()
 
-  const rawCatalog=data.searchCatalog?.['SearchCatalogPerformance_All']??[]
-  const rawQueries=data.searchQuery?.['SearchQueryPerformance']??[]
+  const rawCatalog = data.searchCatalog?.['SearchCatalogPerformance_All'] ?? []
+  const rawQueries = data.searchQuery?.['SearchQueryPerformance']         ?? []
 
-  const catalog=useMemo(()=>filterByDate(filterByAsin(rawCatalog,['asin']),'startDate'),[rawCatalog,filterByDate,filterByAsin])
-  const queries=useMemo(()=>filterByAsin(rawQueries,['searchQuery','asin']),[rawQueries,filterByAsin])
+  const catalog = useMemo(()=>filterByDate(filterByAsin(rawCatalog,['asin']),'startDate'),[rawCatalog,filterByDate,filterByAsin])
+  const queries = useMemo(()=>filterByAsin(rawQueries,['searchQuery','asin']),[rawQueries,filterByAsin])
 
-  const totals=useMemo(()=>{
+  const totals = useMemo(()=>{
     const impressions=catalog.reduce((s,r)=>s+(Number(r.impressionCount)||0),0)
     const clicks     =catalog.reduce((s,r)=>s+(Number(r.clickCount)||0),0)
     const purchases  =catalog.reduce((s,r)=>s+(Number(r.purchaseCount)||0),0)
@@ -32,7 +31,6 @@ export default function Search({ data }) {
 
   return(
     <div>
-      <FilterBar/>
       <div className="kpi-grid">
         <div className="kpi"><div className="kpi-label">Impressions</div><div className="kpi-val">{fmt(totals.impressions)}</div></div>
         <div className="kpi"><div className="kpi-label">Klicks</div><div className="kpi-val">{fmt(totals.clicks)}</div></div>
@@ -44,7 +42,7 @@ export default function Search({ data }) {
       <div className="card" style={{marginBottom:'1rem'}}>
         <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:'1rem'}}>
           <div className="card-title" style={{margin:0}}>Search Catalog ({topCatalog.length})</div>
-          <button onClick={exportCatalog} style={cb}>↓ CSV</button>
+          <button className="chart-btn" onClick={exportCatalog}>↓ CSV</button>
         </div>
         <div className="tbl-wrap">
           <table>
@@ -70,26 +68,11 @@ export default function Search({ data }) {
       <div className="card">
         <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:'1rem'}}>
           <div className="card-title" style={{margin:0}}>Search Query Performance ({topQueries.length})</div>
-          <button onClick={exportQueries} style={cb}>↓ CSV</button>
+          <button className="chart-btn" onClick={exportQueries}>↓ CSV</button>
         </div>
         <div className="tbl-wrap">
           <table>
             <thead><tr><th>Query</th><th>ASIN</th><th>Produktname</th><th>Score</th><th>Volumen</th><th>Imp. Share</th><th>Purchase Share</th></tr></thead>
             <tbody>{topQueries.map((r,i)=>(
               <tr key={i}>
-                <td style={{maxWidth:160,overflow:'hidden',textOverflow:'ellipsis'}}>{r.searchQuery}</td>
-                <td><code style={{fontSize:11}}>{r.asin}</code></td>
-                <td style={{maxWidth:180,overflow:'hidden',textOverflow:'ellipsis',fontSize:12}} title={getTitle(r.asin)}>{getShortTitle(r.asin,30)}</td>
-                <td><span className={`badge ${r.searchQueryScore>35?'badge-green':r.searchQueryScore>20?'badge-amber':'badge-red'}`}>{r.searchQueryScore}</span></td>
-                <td>{fmt(r.searchQueryVolume)}</td>
-                <td>{pct(r.asinImpressionShare)}</td>
-                <td><strong>{pct(r.asinPurchaseShare)}</strong></td>
-              </tr>
-            ))}</tbody>
-          </table>
-        </div>
-      </div>
-    </div>
-  )
-}
-const cb={fontSize:11,padding:'3px 8px',borderRadius:4,border:'1px solid var(--border2)',background:'var(--surface2)',cursor:'pointer',color:'var(--text2)'}
+                <td style={{maxWidth:160,overflow:'hidden',t
