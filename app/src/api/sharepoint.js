@@ -11,11 +11,11 @@ async function fetchDataset(key) {
   if (json.error) throw new Error(json.error)
   const binary = atob(json.data)
   const bytes  = new Uint8Array(binary.length)
-  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i)
-  const wb = XLSX.read(bytes, { type: 'array', cellDates: true })
+  for (let i=0; i<binary.length; i++) bytes[i] = binary.charCodeAt(i)
+  const wb = XLSX.read(bytes, { type:'array', cellDates:true })
   const result = {}
   wb.SheetNames.forEach(name => {
-    result[name] = XLSX.utils.sheet_to_json(wb.Sheets[name], { defval: null })
+    result[name] = XLSX.utils.sheet_to_json(wb.Sheets[name], { defval:null })
   })
   return result
 }
@@ -25,8 +25,8 @@ async function fetchAndMerge(currentKey, histKey, sheetName) {
     fetchDataset(currentKey),
     fetchDataset(histKey),
   ])
-  const currentRows = current.status === 'fulfilled' ? (current.value[sheetName] ?? []) : []
-  const histRows    = hist.status    === 'fulfilled' ? (hist.value[sheetName]    ?? []) : []
+  const currentRows = current.status==='fulfilled' ? (current.value[sheetName]??[]) : []
+  const histRows    = hist.status==='fulfilled'    ? (hist.value[sheetName]??[])    : []
   return { [sheetName]: [...histRows, ...currentRows] }
 }
 
@@ -36,32 +36,17 @@ export const api = {
   basket:  () => fetchDataset('basket'),
   catalog: () => fetchDataset('catalog'),
 
-  repeat() {
-    return fetchAndMerge('repeat', 'repeat_hist', 'RepeatPurchase')
-  },
-  searchCatalog() {
-    return fetchAndMerge('searchcatalog', 'searchcatalog_hist', 'SearchCatalogPerformance_All')
-  },
-  searchQuery() {
-    return fetchAndMerge('searchquery', 'searchquery_hist', 'SearchQueryPerformance')
-  },
-  // Traffic: Nutze "Nach Datum+ASIN" für tagesaktuelle ASIN-Daten
-  async traffic() {
-    const current = await fetchDataset('traffic').catch(() => ({}))
-    return current
-  },
+  repeat()        { return fetchAndMerge('repeat',        'repeat_hist',        'RepeatPurchase') },
+  searchCatalog() { return fetchAndMerge('searchcatalog', 'searchcatalog_hist', 'SearchCatalogPerformance_All') },
+  searchQuery()   { return fetchAndMerge('searchquery',   'searchquery_hist',   'SearchQueryPerformance') },
+  traffic()       { return fetchAndMerge('traffic',       'traffic_hist',       'Nach ASIN') },
 
   async loadAll() {
     const [ads, brand, basket, repeat, searchCatalog, searchQuery, traffic, catalog] =
       await Promise.all([
-        this.ads(),
-        this.brand(),
-        this.basket(),
-        this.repeat(),
-        this.searchCatalog(),
-        this.searchQuery(),
-        this.traffic(),
-        this.catalog().catch(() => ({ 'Sheet1': [] })),
+        this.ads(), this.brand(), this.basket(), this.repeat(),
+        this.searchCatalog(), this.searchQuery(), this.traffic(),
+        this.catalog().catch(()=>({'Sheet1':[]})),
       ])
     return { ads, brand, basket, repeat, searchCatalog, searchQuery, traffic, catalog }
   }
