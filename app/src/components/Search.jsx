@@ -1,35 +1,69 @@
 import { useMemo } from 'react'
-import { useFilters } from '../context/FilterContext.jsx'
+import { useFilters, fmtDate } from '../context/FilterContext.jsx'
 import { downloadCSV } from '../utils/export.js'
+import { useSortable } from '../utils/sort.js'
 
-const fmt=(n,d=0)=>n==null||isNaN(n)?'–':new Intl.NumberFormat('de-DE',{minimumFractionDigits:d,maximumFractionDigits:d}).format(n)
-const eur=n=>`€${fmt(n,2)}`
-const pct=n=>`${fmt(n,1)}%`
+const fmt = (n,d=0) => n==null||isNaN(n)?'–':new Intl.NumberFormat('de-DE',{minimumFractionDigits:d,maximumFractionDigits:d}).format(n)
+const eur = n => `€${fmt(n,2)}`
+const pct = n => `${fmt(n,1)}%`
 
 export default function Search({ data }) {
   const { filterByDate, filterByAsin, getTitle, getShortTitle } = useFilters()
 
   const rawCatalog = data.searchCatalog?.['SearchCatalogPerformance_All'] ?? []
-  const rawQueries = data.searchQuery?.['SearchQueryPerformance'] ?? []
+  const rawQueries = data.searchQuery?.['SearchQueryPerformance']         ?? []
 
-  const catalog = useMemo(()=>filterByDate(filterByAsin(rawCatalog,['asin']),'startDate'),[rawCatalog,filterByDate,filterByAsin])
-  const queries = useMemo(()=>filterByAsin(rawQueries,['searchQuery','asin']),[rawQueries,filterByAsin])
+  const filteredCatalog = useMemo(() =>
+    filterByDate(filterByAsin(rawCatalog, ['asin']), 'startDate')
+  , [rawCatalog, filterByDate, filterByAsin])
 
-  const totals = useMemo(()=>{
-    const impressions=catalog.reduce((s,r)=>s+(Number(r.impressionCount)||0),0)
-    const clicks=catalog.reduce((s,r)=>s+(Number(r.clickCount)||0),0)
-    const purchases=catalog.reduce((s,r)=>s+(Number(r.purchaseCount)||0),0)
-    const sales=catalog.reduce((s,r)=>s+(Number(r.searchTrafficSales)||0),0)
-    return{impressions,clicks,purchases,sales,cvr:clicks>0?purchases/clicks*100:0,ctr:impressions>0?clicks/impressions*100:0}
-  },[catalog])
+  const filteredQueries = useMemo(() =>
+    filterByDate(filterByAsin(rawQueries, ['searchQuery','asin']), 'startDate')
+  , [rawQueries, filterByDate, filterByAsin])
 
-  const topCatalog=useMemo(()=>[...catalog].sort((a,b)=>(Number(b.purchaseCount)||0)-(Number(a.purchaseCount)||0)).slice(0,15),[catalog])
-  const topQueries=useMemo(()=>[...queries].sort((a,b)=>(Number(b.asinPurchaseCount)||0)-(Number(a.asinPurchaseCount)||0)).slice(0,20),[queries])
+  const catalogData = useMemo(() => filteredCatalog.map(r => ({
+    asin:        r.asin,
+    titel:       getTitle(r.asin),
+    startDate:   fmtDate(r.startDate),
+    endDate:     fmtDate(r.endDate),
+    impressions: Number(r.impressionCount)||0,
+    clicks:      Number(r.clickCount)||0,
+    ctr:         (Number(r.impressionCount)||0)>0 ? Number(r.clickCount)/Number(r.impressionCount)*100 : 0,
+    cartAdds:    Number(r.cartAddCount)||0,
+    purchases:   Number(r.purchaseCount)||0,
+    cvr:         (Number(r.clickCount)||0)>0 ? Number(r.purchaseCount)/Number(r.clickCount)*100 : 0,
+    sales:       Number(r.searchTrafficSales)||0,
+  })), [filteredCatalog, getTitle])
 
-  const exportCatalog=()=>downloadCSV(topCatalog.map(r=>({ASIN:r.asin,Produktname:getTitle(r.asin),Impressions:r.impressionCount,Klicks:r.clickCount,'Search Sales':r.searchTrafficSales,Käufe:r.purchaseCount})),'search_catalog.csv')
-  const exportQueries=()=>downloadCSV(topQueries.map(r=>({Query:r.searchQuery,ASIN:r.asin,Produktname:getTitle(r.asin),Score:r.searchQueryScore,Volumen:r.searchQueryVolume,'Purchase Share':r.asinPurchaseShare})),'search_queries.csv')
+  const queryData = useMemo(() => filteredQueries.map(r => ({
+    query:          r.searchQuery ?? '–',
+    asin:           r.asin,
+    titel:          getTitle(r.asin),
+    startDate:      fmtDate(r.startDate),
+    score:          Number(r.searchQueryScore)||0,
+    volume:         Number(r.searchQueryVolume)||0,
+    impShare:       Number(r.asinImpressionShare)||0,
+    clickShare:     Number(r.asinClickShare)||0,
+    purchaseShare:  Number(r.asinPurchaseShare)||0,
+    purchases:      Number(r.asinPurchaseCount)||0,
+  })), [filteredQueries, getTitle])
 
-  return(
+  const { sorted: sortedCatalog, Th: CatTh } = useSortable(catalogData, 'purchases', 'desc')
+  const { sorted: sortedQueries, Th: QTh    } = useSortable(queryData,   'purchases', 'desc')
+
+  const totals = useMemo(()=>({
+    impressions: catalogData.reduce((s,r)=>s+r.impressions,0),
+    clicks:      catalogData.reduce((s,r)=>s+r.clicks,0),
+    purchases:   catalogData.reduce((s,r)=>s+r.purchases,0),
+    sales:       catalogData.reduce((s,r)=>s+r.sales,0),
+    cvr:         catalogData.reduce((s,r)=>s+r.clicks,0)>0 ? catalogData.reduce((s,r)=>s+r.purchases,0)/catalogData.reduce((s,r)=>s+r.clicks,0)*100 : 0,
+    ctr:         catalogData.reduce((s,r)=>s+r.impressions,0)>0 ? catalogData.reduce((s,r)=>s+r.clicks,0)/catalogData.reduce((s,r)=>s+r.impressions,0)*100 : 0,
+  }),[catalogData])
+
+  const exportCatalog = () => downloadCSV(sortedCatalog.map(r=>({ASIN:r.asin,Produktname:r.titel,'Von':r.startDate,'Bis':r.endDate,Impressions:r.impressions,Klicks:r.clicks,'CTR %':r.ctr.toFixed(1),Käufe:r.purchases,'CVR %':r.cvr.toFixed(1),'Search Sales':r.sales.toFixed(2)})),'search_catalog.csv')
+  const exportQueries = () => downloadCSV(sortedQueries.map(r=>({Query:r.query,ASIN:r.asin,Produktname:r.titel,Datum:r.startDate,Score:r.score,Volumen:r.volume,'Purchase Share':r.purchaseShare})),'search_queries.csv')
+
+  return (
     <div>
       <div className="kpi-grid">
         <div className="kpi"><div className="kpi-label">Impressions</div><div className="kpi-val">{fmt(totals.impressions)}</div></div>
@@ -42,31 +76,40 @@ export default function Search({ data }) {
 
       <div className="card" style={{marginBottom:'1rem'}}>
         <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:'1rem'}}>
-          <div className="card-title" style={{margin:0}}>Search Catalog ({topCatalog.length})</div>
+          <div className="card-title" style={{margin:0}}>Search Catalog ({sortedCatalog.length})</div>
           <button className="chart-btn" onClick={exportCatalog}>↓ CSV</button>
         </div>
         <div className="tbl-wrap">
           <table>
             <thead>
-              <tr><th>ASIN</th><th>Produktname</th><th>Impressions</th><th>Klicks</th><th>CTR</th><th>Käufe</th><th>CVR</th><th>Search Sales</th></tr>
+              <tr>
+                <CatTh col="asin"        label="ASIN"/>
+                <CatTh col="titel"       label="Produktname"/>
+                <CatTh col="startDate"   label="Von"/>
+                <CatTh col="endDate"     label="Bis"/>
+                <CatTh col="impressions" label="Impressions"/>
+                <CatTh col="clicks"      label="Klicks"/>
+                <CatTh col="ctr"         label="CTR"/>
+                <CatTh col="purchases"   label="Käufe"/>
+                <CatTh col="cvr"         label="CVR"/>
+                <CatTh col="sales"       label="Search Sales"/>
+              </tr>
             </thead>
             <tbody>
-              {topCatalog.map((r,i)=>{
-                const ctr=r.impressionCount>0?r.clickCount/r.impressionCount*100:0
-                const cvr=r.clickCount>0?r.purchaseCount/r.clickCount*100:0
-                return(
-                  <tr key={i}>
-                    <td><code style={{fontSize:11}}>{r.asin}</code></td>
-                    <td style={{maxWidth:220,overflow:'hidden',textOverflow:'ellipsis',fontSize:12}} title={getTitle(r.asin)}>{getShortTitle(r.asin,35)}</td>
-                    <td>{fmt(r.impressionCount)}</td>
-                    <td>{fmt(r.clickCount)}</td>
-                    <td><span className={`badge ${ctr>10?'badge-green':ctr>3?'badge-amber':'badge-red'}`}>{pct(ctr)}</span></td>
-                    <td><strong>{fmt(r.purchaseCount)}</strong></td>
-                    <td><span className={`badge ${cvr>15?'badge-green':cvr>5?'badge-amber':'badge-red'}`}>{pct(cvr)}</span></td>
-                    <td>{eur(r.searchTrafficSales)}</td>
-                  </tr>
-                )
-              })}
+              {sortedCatalog.slice(0,100).map((r,i)=>(
+                <tr key={i}>
+                  <td><code style={{fontSize:11}}>{r.asin}</code></td>
+                  <td style={{maxWidth:200,overflow:'hidden',textOverflow:'ellipsis',fontSize:12}} title={r.titel}>{getShortTitle(r.asin,30)}</td>
+                  <td style={{fontSize:12,color:'var(--tx2)'}}>{r.startDate}</td>
+                  <td style={{fontSize:12,color:'var(--tx2)'}}>{r.endDate}</td>
+                  <td>{fmt(r.impressions)}</td>
+                  <td>{fmt(r.clicks)}</td>
+                  <td><span className={`badge ${r.ctr>10?'badge-green':r.ctr>3?'badge-amber':'badge-red'}`}>{pct(r.ctr)}</span></td>
+                  <td><strong>{fmt(r.purchases)}</strong></td>
+                  <td><span className={`badge ${r.cvr>15?'badge-green':r.cvr>5?'badge-amber':'badge-red'}`}>{pct(r.cvr)}</span></td>
+                  <td>{eur(r.sales)}</td>
+                </tr>
+              ))}
             </tbody>
           </table>
         </div>
@@ -74,24 +117,36 @@ export default function Search({ data }) {
 
       <div className="card">
         <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:'1rem'}}>
-          <div className="card-title" style={{margin:0}}>Search Query Performance ({topQueries.length})</div>
+          <div className="card-title" style={{margin:0}}>Search Query Performance ({sortedQueries.length})</div>
           <button className="chart-btn" onClick={exportQueries}>↓ CSV</button>
         </div>
         <div className="tbl-wrap">
           <table>
             <thead>
-              <tr><th>Query</th><th>ASIN</th><th>Produktname</th><th>Score</th><th>Volumen</th><th>Imp. Share</th><th>Purchase Share</th></tr>
+              <tr>
+                <QTh col="query"         label="Query"/>
+                <QTh col="asin"          label="ASIN"/>
+                <QTh col="titel"         label="Produktname"/>
+                <QTh col="startDate"     label="Datum"/>
+                <QTh col="score"         label="Score"/>
+                <QTh col="volume"        label="Volumen"/>
+                <QTh col="impShare"      label="Imp. Share"/>
+                <QTh col="clickShare"    label="Click Share"/>
+                <QTh col="purchaseShare" label="Purchase Share"/>
+              </tr>
             </thead>
             <tbody>
-              {topQueries.map((r,i)=>(
+              {sortedQueries.slice(0,100).map((r,i)=>(
                 <tr key={i}>
-                  <td style={{maxWidth:160,overflow:'hidden',textOverflow:'ellipsis'}}>{r.searchQuery}</td>
+                  <td style={{maxWidth:160,overflow:'hidden',textOverflow:'ellipsis'}}>{r.query}</td>
                   <td><code style={{fontSize:11}}>{r.asin}</code></td>
-                  <td style={{maxWidth:180,overflow:'hidden',textOverflow:'ellipsis',fontSize:12}} title={getTitle(r.asin)}>{getShortTitle(r.asin,30)}</td>
-                  <td><span className={`badge ${r.searchQueryScore>35?'badge-green':r.searchQueryScore>20?'badge-amber':'badge-red'}`}>{r.searchQueryScore}</span></td>
-                  <td>{fmt(r.searchQueryVolume)}</td>
-                  <td>{pct(r.asinImpressionShare)}</td>
-                  <td><strong>{pct(r.asinPurchaseShare)}</strong></td>
+                  <td style={{maxWidth:160,overflow:'hidden',textOverflow:'ellipsis',fontSize:12}} title={r.titel}>{getShortTitle(r.asin,25)}</td>
+                  <td style={{fontSize:12,color:'var(--tx2)'}}>{r.startDate}</td>
+                  <td><span className={`badge ${r.score>35?'badge-green':r.score>20?'badge-amber':'badge-red'}`}>{r.score}</span></td>
+                  <td>{fmt(r.volume)}</td>
+                  <td>{pct(r.impShare)}</td>
+                  <td>{pct(r.clickShare)}</td>
+                  <td><strong>{pct(r.purchaseShare)}</strong></td>
                 </tr>
               ))}
             </tbody>
