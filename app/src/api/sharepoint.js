@@ -20,24 +20,51 @@ async function fetchDataset(key) {
   return result
 }
 
+// Zwei Datensätze laden und nach Sheet mergen
+async function fetchAndMerge(currentKey, histKey, sheetName) {
+  const [current, hist] = await Promise.allSettled([
+    fetchDataset(currentKey),
+    fetchDataset(histKey),
+  ])
+  const currentRows = current.status === 'fulfilled' ? (current.value[sheetName] ?? []) : []
+  const histRows    = hist.status    === 'fulfilled' ? (hist.value[sheetName]    ?? []) : []
+
+  // Deduplizieren: Historisch als Basis, aktuell überschreibt
+  const merged = [...histRows, ...currentRows]
+  return { [sheetName]: merged }
+}
+
 export const api = {
-  ads:           () => fetchDataset('ads'),
-  brand:         () => fetchDataset('brand'),
-  basket:        () => fetchDataset('basket'),
-  repeat:        () => fetchDataset('repeat'),
-  searchCatalog: () => fetchDataset('searchcatalog'),
-  searchQuery:   () => fetchDataset('searchquery'),
-  traffic:       () => fetchDataset('traffic'),
-  catalog:       () => fetchDataset('catalog'),
+  ads:    () => fetchDataset('ads'),
+  brand:  () => fetchDataset('brand'),
+  basket: () => fetchDataset('basket'),
+  catalog:() => fetchDataset('catalog'),
+
+  repeat() {
+    return fetchAndMerge('repeat', 'repeat_hist', 'RepeatPurchase')
+  },
+  searchCatalog() {
+    return fetchAndMerge('searchcatalog', 'searchcatalog_hist', 'SearchCatalogPerformance_All')
+  },
+  searchQuery() {
+    return fetchAndMerge('searchquery', 'searchquery_hist', 'SearchQueryPerformance')
+  },
+  traffic() {
+    return fetchAndMerge('traffic', 'traffic_hist', 'Nach ASIN')
+  },
 
   async loadAll() {
-    const [ads, brand, basket, repeat, searchCatalog, searchQuery, traffic, catalogResult] =
+    const [ads, brand, basket, repeat, searchCatalog, searchQuery, traffic, catalog] =
       await Promise.all([
-        this.ads(), this.brand(), this.basket(), this.repeat(),
-        this.searchCatalog(), this.searchQuery(), this.traffic(),
-        this.catalog().catch(() => ({ 'Produkt_Katalog': [] })), // ← Fehler ignorieren
+        this.ads(),
+        this.brand(),
+        this.basket(),
+        this.repeat(),
+        this.searchCatalog(),
+        this.searchQuery(),
+        this.traffic(),
+        this.catalog().catch(() => ({ 'Sheet1': [] })),
       ])
-    const catalog = catalogResult
     return { ads, brand, basket, repeat, searchCatalog, searchQuery, traffic, catalog }
   }
 }
