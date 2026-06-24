@@ -2,7 +2,7 @@ import { useMemo, useRef } from 'react'
 import { Line } from 'react-chartjs-2'
 import { Chart, CategoryScale, LinearScale, PointElement, LineElement, Filler, Tooltip, Legend } from 'chart.js'
 import { useFilters, fmtDate, fmtMonth } from '../context/FilterContext.jsx'
-import { downloadCSV, downloadChartPNG } from '../utils/export.js'
+import { downloadCSV, downloadExcel, downloadPDF, downloadChartPNG } from '../utils/export.js'
 import { useSortable } from '../utils/sort.jsx'
 
 Chart.register(CategoryScale, LinearScale, PointElement, LineElement, Filler, Tooltip, Legend)
@@ -10,7 +10,13 @@ Chart.register(CategoryScale, LinearScale, PointElement, LineElement, Filler, To
 const fmt = (n,d=0) => n==null||isNaN(n)?'–':new Intl.NumberFormat('de-DE',{minimumFractionDigits:d,maximumFractionDigits:d}).format(n)
 const eur = n => `€${fmt(n)}`
 
-export default function Overview({ data }) {
+const PDF_COLS = [
+  {key:'asin',label:'ASIN'},{key:'titel',label:'Produktname'},{key:'letztesMonat',label:'Monat'},
+  {key:'revenue',label:'Umsatz (€)'},{key:'orders',label:'Bestellungen'},{key:'sessions',label:'Sessions'},
+  {key:'rate',label:'Bestellrate %'},{key:'buybox',label:'Buy Box %'},
+]
+
+export default function Overview({ data, onExport }) {
   const { filterByDate, filterByAsin, getTitle, getShortTitle } = useFilters()
   const revenueRef  = useRef()
   const sessionsRef = useRef()
@@ -45,9 +51,9 @@ export default function Overview({ data }) {
     })
     return Object.values(map).filter(a=>a.asin!=='–').map(a=>({
       ...a,
-      titel:      getTitle(a.asin),
-      buybox:     a.buybox.length ? a.buybox.reduce((s,v)=>s+v,0)/a.buybox.length : null,
-      rate:       a.rate.length   ? a.rate.reduce((s,v)=>s+v,0)/a.rate.length     : null,
+      titel:        getTitle(a.asin),
+      buybox:       a.buybox.length ? +(a.buybox.reduce((s,v)=>s+v,0)/a.buybox.length).toFixed(1) : null,
+      rate:         a.rate.length   ? +(a.rate.reduce((s,v)=>s+v,0)/a.rate.length).toFixed(1)     : null,
       letztesMonat: a.months.length ? fmtMonth(a.months[a.months.length-1]) : '–',
     }))
   }, [traffic, getTitle])
@@ -58,7 +64,13 @@ export default function Overview({ data }) {
     const s = [...brand].sort((a,b)=>new Date(a.startDate)-new Date(b.startDate))
     return {
       labels: s.map(r=>fmtDate(r.startDate)),
-      datasets:[{label:'Umsatz (€)',data:s.map(r=>Number(r.orderedProductSalesAmount)||0),borderColor:'var(--ac)',backgroundColor:'rgba(0,131,173,0.07)',fill:true,tension:.4,pointRadius:0,borderWidth:2}]
+      datasets:[{
+        label:'Umsatz (€)',
+        data: s.map(r=>Number(r.orderedProductSalesAmount)||0),
+        borderColor: '#0083AD',
+        backgroundColor: 'rgba(0,131,173,0.07)',
+        fill:true, tension:.4, pointRadius:0, borderWidth:2,
+      }]
     }
   }, [brand])
 
@@ -67,8 +79,8 @@ export default function Overview({ data }) {
     return {
       labels: s.map(r=>fmtDate(r.startDate)),
       datasets:[
-        {label:'Sessions',     data:s.map(r=>Number(r.browserSessions)||0),  borderColor:'var(--ac)',tension:.4,pointRadius:0,borderWidth:2},
-        {label:'Seitenaufrufe',data:s.map(r=>Number(r.browserPageViews)||0), borderColor:'var(--acglow)',tension:.4,pointRadius:0,borderWidth:2,borderDash:[4,3]},
+        { label:'Sessions',      data:s.map(r=>Number(r.browserSessions)||0),  borderColor:'#0083AD', tension:.4, pointRadius:0, borderWidth:2 },
+        { label:'Seitenaufrufe', data:s.map(r=>Number(r.browserPageViews)||0), borderColor:'#00FFE5', tension:.4, pointRadius:0, borderWidth:2, borderDash:[4,3] },
       ]
     }
   }, [brand])
@@ -76,10 +88,26 @@ export default function Overview({ data }) {
   const opts  = {responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},scales:{x:{ticks:{font:{size:10},maxTicksLimit:10}},y:{ticks:{font:{size:10}}}}}
   const opts2 = {...opts,plugins:{legend:{display:true,labels:{boxWidth:10,font:{size:11}}}}}
 
-  const exportTable = () => downloadCSV(
-    asinTotals.map(a=>({ASIN:a.asin,Produktname:a.titel,Monat:a.letztesMonat,Umsatz:a.revenue,Bestellungen:a.orders,Sessions:a.sessions,'Buy Box %':a.buybox?.toFixed(1)??'','Bestellrate %':a.rate?.toFixed(1)??''})),
-    'uebersicht_asins.csv'
-  )
+  const exportData = asinTotals.map(a=>({
+    ASIN:           a.asin,
+    Produktname:    a.titel,
+    Monat:          a.letztesMonat,
+    'Umsatz (€)':   a.revenue,
+    Bestellungen:   a.orders,
+    Sessions:       a.sessions,
+    'Bestellrate %': a.rate ?? '',
+    'Buy Box %':     a.buybox ?? '',
+  }))
+
+  // Export-Handler für Toolbar
+  const handleExport = (format) => {
+    if (format === 'csv')   downloadCSV(exportData, 'uebersicht_asins.csv')
+    if (format === 'excel') downloadExcel(exportData, 'uebersicht_asins.xlsx', 'Übersicht')
+    if (format === 'pdf')   downloadPDF('Top ASINs nach Umsatz', asinTotals, PDF_COLS)
+  }
+
+  // onExport nach oben weiterreichen
+  useMemo(() => { if (onExport) onExport.current = handleExport }, [asinTotals])
 
   return (
     <div>
@@ -112,7 +140,11 @@ export default function Overview({ data }) {
       <div className="card">
         <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:'1rem'}}>
           <div className="card-title" style={{margin:0}}>Top ASINs ({asinTotals.length})</div>
-          <button className="chart-btn" onClick={exportTable}>↓ CSV</button>
+          <div style={{display:'flex',gap:6}}>
+            <button className="chart-btn" onClick={()=>downloadCSV(exportData,'uebersicht.csv')}>↓ CSV</button>
+            <button className="chart-btn" onClick={()=>downloadExcel(exportData,'uebersicht.xlsx','Übersicht')}>↓ Excel</button>
+            <button className="chart-btn" onClick={()=>downloadPDF('Top ASINs',asinTotals,PDF_COLS)}>↓ PDF</button>
+          </div>
         </div>
         <div className="tbl-wrap">
           <table>
@@ -137,8 +169,8 @@ export default function Overview({ data }) {
                   <td><strong>{eur(a.revenue)}</strong></td>
                   <td>{fmt(a.orders)}</td>
                   <td>{fmt(a.sessions)}</td>
-                  <td>{a.rate!=null?<span className={`badge ${a.rate>=15?'badge-green':a.rate>=8?'badge-amber':'badge-red'}`}>{fmt(a.rate,1)}%</span>:'–'}</td>
-                  <td>{a.buybox!=null?<span className={`badge ${a.buybox>=80?'badge-green':a.buybox>=50?'badge-amber':'badge-red'}`}>{fmt(a.buybox,1)}%</span>:'–'}</td>
+                  <td>{a.rate!=null?<span className={`badge ${a.rate>=15?'badge-green':a.rate>=8?'badge-amber':'badge-red'}`}>{a.rate}%</span>:'–'}</td>
+                  <td>{a.buybox!=null?<span className={`badge ${a.buybox>=80?'badge-green':a.buybox>=50?'badge-amber':'badge-red'}`}>{a.buybox}%</span>:'–'}</td>
                 </tr>
               ))}
             </tbody>
