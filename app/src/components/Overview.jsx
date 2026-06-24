@@ -3,7 +3,7 @@ import { Line } from 'react-chartjs-2'
 import { Chart, CategoryScale, LinearScale, PointElement, LineElement, Filler, Tooltip, Legend } from 'chart.js'
 import { useFilters, fmtDate, fmtMonth } from '../context/FilterContext.jsx'
 import { downloadCSV, downloadChartPNG } from '../utils/export.js'
-import { useSortable } from '../utils/sort.js'
+import { useSortable } from '../utils/sort.jsx'
 
 Chart.register(CategoryScale, LinearScale, PointElement, LineElement, Filler, Tooltip, Legend)
 
