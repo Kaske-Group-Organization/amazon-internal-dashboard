@@ -11,6 +11,27 @@ Chart.register(CategoryScale, LinearScale, PointElement, LineElement, Filler, To
 const fmt = (n,d=0) => n==null||isNaN(n)?'–':new Intl.NumberFormat('de-DE',{minimumFractionDigits:d,maximumFractionDigits:d}).format(n)
 const eur = n => `€${fmt(n)}`
 
+function valToDateStr(val) {
+  if (!val) return null
+  if (val instanceof Date) {
+    if (isNaN(val)) return null
+    return `${val.getFullYear()}-${String(val.getMonth()+1).padStart(2,'0')}-${String(val.getDate()).padStart(2,'0')}`
+  }
+  if (typeof val === 'number') {
+    const d = new Date(Math.round((val-25569)*86400*1000))
+    if (isNaN(d)) return null
+    return `${d.getUTCFullYear()}-${String(d.getUTCMonth()+1).padStart(2,'0')}-${String(d.getUTCDate()).padStart(2,'0')}`
+  }
+  if (typeof val === 'string') {
+    if (/^\d{2}\.\d{2}\.\d{4}$/.test(val)) {
+      const [d,m,y] = val.split('.')
+      return `${y}-${m}-${d}`
+    }
+    return val.slice(0,10)
+  }
+  return null
+}
+
 const PDF_COLS = [
   {key:'asin',label:'ASIN'},{key:'titel',label:'Produktname'},{key:'zeitraum',label:'Zeitraum'},
   {key:'revenue',label:'Umsatz (€)'},{key:'orders',label:'Bestellungen'},{key:'sessions',label:'Sessions'},
@@ -27,7 +48,7 @@ const KPI_INFO = {
 }
 
 export default function Overview({ data, onExport }) {
-  const { filterByDate, filterByAsin, getTitle, getShortTitle } = useFilters()
+  const { filterByDate, dateFrom, dateTo, asinFilter, getTitle, getShortTitle } = useFilters()
   const revenueRef  = useRef()
   const sessionsRef = useRef()
 
@@ -38,9 +59,70 @@ export default function Overview({ data, onExport }) {
     filterByDate(rawBrand, 'startDate')
   , [rawBrand, filterByDate])
 
-  const traffic = useMemo(() =>
-    filterByDate(filterByAsin(rawTraffic, ['Child ASIN','Parent ASIN']), 'Von')
-  , [rawTraffic, filterByDate, filterByAsin])
+  // Filtere Traffic-Zeilen VOR der Aggregation
+  const trafficFiltered = useMemo(() => {
+    let rows = rawTraffic
+
+    // ASIN-Filter: exakter Match für ASIN-Format, sonst substring
+    if (asinFilter.trim()) {
+      const terms = asinFilter.trim()
+        .split(/[\n,\s]+/)
+        .map(s => s.trim().toUpperCase())
+        .filter(s => s.length >= 2)
+      if (terms.length) {
+        rows = rows.filter(r => {
+          const asin = (r['Child ASIN'] || r['Parent ASIN'] || '').toString().toUpperCase().trim()
+          return terms.some(t => /^B[0-9A-Z]{9}$/i.test(t) ? asin === t : asin.includes(t))
+        })
+      }
+    }
+
+    // Datumsfilter mit Überlappungslogik:
+    // Zeile einschließen wenn Von <= dateTo UND Bis >= dateFrom
+    if (dateFrom || dateTo) {
+      rows = rows.filter(r => {
+        const von = valToDateStr(r['Von'])
+        const bis = valToDateStr(r['Bis'])
+        // Wenn beide fehlen: einschließen
+        if (!von && !bis) return true
+        // Bis muss >= dateFrom sein
+        if (dateFrom && bis && bis < dateFrom) return false
+        // Von muss <= dateTo sein
+        if (dateTo && von && von > dateTo) return false
+        return true
+      })
+    }
+
+    return rows
+  }, [rawTraffic, asinFilter, dateFrom, dateTo])
+
+  // Aggregiere nach ASIN
+  const asinRaw = useMemo(() => {
+    const map = {}
+    trafficFiltered.forEach(r => {
+      const asin = r['Child ASIN'] || r['Parent ASIN'] || '–'
+      if (asin === '–') return
+      if (!map[asin]) map[asin] = { asin, revenue:0, orders:0, sessions:0, buybox:[], rate:[], bisValues:[] }
+      map[asin].revenue  += Number(r['Umsatz (EUR)'])||0
+      map[asin].orders   += Number(r['Bestellungen'])||0
+      map[asin].sessions += Number(r['Sessions'])||0
+      if (r['Buy Box %']   != null) map[asin].buybox.push(Number(r['Buy Box %']))
+      if (r['Bestellrate %']!= null) map[asin].rate.push(Number(r['Bestellrate %']))
+      if (r['Bis']) map[asin].bisValues.push(valToDateStr(r['Bis']))
+    })
+    return Object.values(map).map(a => ({
+      ...a,
+      titel:    getTitle(a.asin),
+      buybox:   a.buybox.length ? +(a.buybox.reduce((s,v)=>s+v,0)/a.buybox.length).toFixed(1) : null,
+      rate:     a.rate.length   ? +(a.rate.reduce((s,v)=>s+v,0)/a.rate.length).toFixed(1)     : null,
+      // Neuestes Bis-Datum als Zeitraumangabe
+      zeitraum: a.bisValues.length
+        ? fmtMonth(a.bisValues.sort().reverse()[0])
+        : '–',
+    }))
+  }, [trafficFiltered, getTitle])
+
+  const { sorted: asinTotals, Th } = useSortable(asinRaw, 'revenue', 'desc')
 
   const totals = useMemo(() => {
     const revenue   = brand.reduce((s,r)=>s+(Number(r.orderedProductSalesAmount)||0),0)
@@ -51,30 +133,6 @@ export default function Overview({ data, onExport }) {
     const cvr       = sessions>0?orders/sessions*100:0
     return { revenue, orders, sessions, pageviews, units, cvr }
   }, [brand])
-
-  const asinRaw = useMemo(() => {
-    const map = {}
-    traffic.forEach(r => {
-      const asin = r['Child ASIN']||r['Parent ASIN']||'–'
-      if (!map[asin]) map[asin]={ asin, revenue:0, orders:0, sessions:0, buybox:[], rate:[], von:[], bis:[] }
-      map[asin].revenue  += Number(r['Umsatz (EUR)'])||0
-      map[asin].orders   += Number(r['Bestellungen'])||0
-      map[asin].sessions += Number(r['Sessions'])||0
-      if (r['Buy Box %']!=null)     map[asin].buybox.push(Number(r['Buy Box %']))
-      if (r['Bestellrate %']!=null) map[asin].rate.push(Number(r['Bestellrate %']))
-      if (r['Von']) map[asin].von.push(r['Von'])
-      if (r['Bis']) map[asin].bis.push(r['Bis'])
-    })
-    return Object.values(map).filter(a=>a.asin!=='–').map(a=>({
-      ...a,
-      titel:    getTitle(a.asin),
-      buybox:   a.buybox.length ? +(a.buybox.reduce((s,v)=>s+v,0)/a.buybox.length).toFixed(1) : null,
-      rate:     a.rate.length   ? +(a.rate.reduce((s,v)=>s+v,0)/a.rate.length).toFixed(1)     : null,
-      zeitraum: a.von.length    ? fmtMonth(a.von[0]) : '–',
-    }))
-  }, [traffic, getTitle])
-
-  const { sorted: asinTotals, Th } = useSortable(asinRaw, 'revenue', 'desc')
 
   const chartData = useMemo(() => {
     const s = [...brand].sort((a,b)=>new Date(a.startDate)-new Date(b.startDate))
@@ -107,7 +165,7 @@ export default function Overview({ data, onExport }) {
   useMemo(()=>{ if(onExport) onExport.current=(format)=>{
     if(format==='csv')   downloadCSV(exportData,'uebersicht.csv')
     if(format==='excel') downloadExcel(exportData,'uebersicht.xlsx','Übersicht')
-    if(format==='pdf')   downloadPDF('Top ASINs nach Umsatz',asinTotals,PDF_COLS)
+    if(format==='pdf')   downloadPDF('Top ASINs',asinTotals,PDF_COLS)
   }},[asinTotals])
 
   const kpis = [
@@ -137,7 +195,7 @@ export default function Overview({ data, onExport }) {
           <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:'1rem'}}>
             <div style={{display:'flex',alignItems:'center',gap:4}}>
               <div className="card-title" style={{margin:0}}>Umsatz täglich</div>
-              <InfoTooltip text={'Quelle: Brand Analytics (SP-API)\nTäglicher Umsatz im gewählten Zeitraum.'} position="right"/>
+              <InfoTooltip text={'Quelle: Brand Analytics (SP-API)\nTäglicher Umsatz.'} position="right"/>
             </div>
             <button className="chart-btn" onClick={()=>downloadChartPNG(revenueRef,'umsatz.png')}>↓ PNG</button>
           </div>
@@ -147,7 +205,7 @@ export default function Overview({ data, onExport }) {
           <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:'1rem'}}>
             <div style={{display:'flex',alignItems:'center',gap:4}}>
               <div className="card-title" style={{margin:0}}>Sessions & Seitenaufrufe</div>
-              <InfoTooltip text={'Quelle: Brand Analytics (SP-API)\nSessions = einzigartige Besucher\nSeitenaufrufe = Gesamtaufrufe'} position="right"/>
+              <InfoTooltip text={'Quelle: Brand Analytics (SP-API)\nSessions = einzigartige Besucher'} position="right"/>
             </div>
             <button className="chart-btn" onClick={()=>downloadChartPNG(sessionsRef,'sessions.png')}>↓ PNG</button>
           </div>
@@ -159,7 +217,7 @@ export default function Overview({ data, onExport }) {
         <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:'1rem'}}>
           <div style={{display:'flex',alignItems:'center',gap:4}}>
             <div className="card-title" style={{margin:0}}>Top ASINs ({asinTotals.length})</div>
-            <InfoTooltip text={'Quelle: Verkäufe & Traffic / Nach ASIN (SP-API)\nMonatlich aggregierte ASIN-Daten.'} position="right"/>
+            <InfoTooltip text={'Quelle: Verkäufe & Traffic / Nach ASIN (SP-API)\nDatumsfilter prüft ob der Berichtszeitraum (Von–Bis) den gewählten Zeitraum überschneidet.'} position="right"/>
           </div>
           <div style={{display:'flex',gap:6}}>
             <button className="chart-btn" onClick={()=>downloadCSV(exportData,'uebersicht.csv')}>↓ CSV</button>
