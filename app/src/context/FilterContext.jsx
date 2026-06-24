@@ -2,13 +2,25 @@ import { createContext, useContext, useState, useMemo } from 'react'
 
 const FilterContext = createContext(null)
 
+// Timezone-sicheres Date-Parsing
 function toDateStr(val) {
-  if (!val) return null
-  if (val instanceof Date) return isNaN(val) ? null : val.toISOString().slice(0, 10)
+  if (val == null) return null
+  if (val instanceof Date) {
+    if (isNaN(val)) return null
+    // Lokales Datum verwenden (nicht UTC) um Timezone-Bugs zu vermeiden
+    const y = val.getFullYear()
+    const m = String(val.getMonth() + 1).padStart(2, '0')
+    const d = String(val.getDate()).padStart(2, '0')
+    return `${y}-${m}-${d}`
+  }
   if (typeof val === 'number') {
-    // Excel serial date
-    const d = new Date((val - 25569) * 86400 * 1000)
-    return isNaN(d) ? null : d.toISOString().slice(0, 10)
+    // Excel Serial Date → UTC (Excel zählt ab 1900-01-01)
+    const d = new Date(Math.round((val - 25569) * 86400 * 1000))
+    if (isNaN(d)) return null
+    const y = d.getUTCFullYear()
+    const mo = String(d.getUTCMonth() + 1).padStart(2, '0')
+    const day = String(d.getUTCDate()).padStart(2, '0')
+    return `${y}-${mo}-${day}`
   }
   if (typeof val === 'string') return val.slice(0, 10)
   return null
@@ -58,7 +70,7 @@ export function FilterProvider({ children, catalog = [], uploadedFiles = [] }) {
     return rows.filter(r => {
       const raw  = r[dateCol]
       const date = toDateStr(raw)
-      if (!date) return true
+      if (!date) return true // kein Datum → nicht filtern
       if (dateFrom && date < dateFrom) return false
       if (dateTo   && date > dateTo)   return false
       return true
@@ -66,15 +78,26 @@ export function FilterProvider({ children, catalog = [], uploadedFiles = [] }) {
   }
 
   const filterByAsin = (rows, asinCols = ['asin']) => {
-    const q = asinFilter.trim().toUpperCase()
-    if (!q) return rows
+    const raw = asinFilter.trim()
+    if (!raw) return rows
+
+    // Mehrere ASINs: Komma- oder zeilengetrennt
+    const terms = raw
+      .split(/[\n,]+/)
+      .map(s => s.trim().toUpperCase())
+      .filter(Boolean)
+
+    if (terms.length === 0) return rows
+
     return rows.filter(r =>
-      asinCols.some(col => {
-        const val = r[col]?.toString().toUpperCase() ?? ''
-        if (val.includes(q)) return true
-        const title = getTitle(r[col] ?? '').toUpperCase()
-        return title.includes(q)
-      })
+      terms.some(term =>
+        asinCols.some(col => {
+          const val = r[col]?.toString().toUpperCase() ?? ''
+          if (val.includes(term)) return true
+          const title = getTitle(r[col] ?? '').toUpperCase()
+          return title.includes(term)
+        })
+      )
     )
   }
 
