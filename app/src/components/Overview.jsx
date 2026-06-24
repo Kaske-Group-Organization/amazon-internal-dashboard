@@ -4,6 +4,7 @@ import { Chart, CategoryScale, LinearScale, PointElement, LineElement, Filler, T
 import { useFilters, fmtDate, fmtMonth } from '../context/FilterContext.jsx'
 import { downloadCSV, downloadExcel, downloadPDF, downloadChartPNG } from '../utils/export.js'
 import { useSortable } from '../utils/sort.jsx'
+import InfoTooltip from './InfoTooltip.jsx'
 
 Chart.register(CategoryScale, LinearScale, PointElement, LineElement, Filler, Tooltip, Legend)
 
@@ -15,6 +16,15 @@ const PDF_COLS = [
   {key:'revenue',label:'Umsatz (€)'},{key:'orders',label:'Bestellungen'},{key:'sessions',label:'Sessions'},
   {key:'rate',label:'Bestellrate %'},{key:'buybox',label:'Buy Box %'},
 ]
+
+const KPI_INFO = {
+  revenue:    'Quelle: Brand Analytics (SP-API)\nSumme des gesamten Produktumsatzes im gewählten Zeitraum inkl. B2B.',
+  orders:     'Quelle: Brand Analytics (SP-API)\nAnzahl der aufgegebenen Bestellungen (Bestelleinheiten, nicht Artikel).',
+  units:      'Quelle: Brand Analytics (SP-API)\nAnzahl der bestellten Einheiten (kann > Bestellungen sein bei Multi-Qty).',
+  sessions:   'Quelle: Brand Analytics (SP-API)\nEinzigarte Besucher-Sessions auf deinen Amazon-Produktseiten.',
+  pageviews:  'Quelle: Brand Analytics (SP-API)\nGesamtanzahl der Seitenaufrufe (ein Besucher kann mehrere Seiten aufrufen).',
+  cvr:        'Quelle: Brand Analytics (SP-API)\nBerechnung: Bestellungen ÷ Sessions × 100\nZeigt wie viele Besucher tatsächlich kaufen.',
+}
 
 export default function Overview({ data, onExport }) {
   const { filterByDate, filterByAsin, getTitle, getShortTitle } = useFilters()
@@ -65,10 +75,8 @@ export default function Overview({ data, onExport }) {
     return {
       labels: s.map(r=>fmtDate(r.startDate)),
       datasets:[{
-        label:'Umsatz (€)',
-        data: s.map(r=>Number(r.orderedProductSalesAmount)||0),
-        borderColor: '#0083AD',
-        backgroundColor: 'rgba(0,131,173,0.07)',
+        label:'Umsatz (€)', data:s.map(r=>Number(r.orderedProductSalesAmount)||0),
+        borderColor:'#0083AD', backgroundColor:'rgba(0,131,173,0.07)',
         fill:true, tension:.4, pointRadius:0, borderWidth:2,
       }]
     }
@@ -88,49 +96,54 @@ export default function Overview({ data, onExport }) {
   const opts  = {responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},scales:{x:{ticks:{font:{size:10},maxTicksLimit:10}},y:{ticks:{font:{size:10}}}}}
   const opts2 = {...opts,plugins:{legend:{display:true,labels:{boxWidth:10,font:{size:11}}}}}
 
-  const exportData = asinTotals.map(a=>({
-    ASIN:           a.asin,
-    Produktname:    a.titel,
-    Monat:          a.letztesMonat,
-    'Umsatz (€)':   a.revenue,
-    Bestellungen:   a.orders,
-    Sessions:       a.sessions,
-    'Bestellrate %': a.rate ?? '',
-    'Buy Box %':     a.buybox ?? '',
-  }))
+  const exportData = asinTotals.map(a=>({'ASIN':a.asin,'Produktname':a.titel,'Monat':a.letztesMonat,'Umsatz (€)':a.revenue,'Bestellungen':a.orders,'Sessions':a.sessions,'Bestellrate %':a.rate??'','Buy Box %':a.buybox??''}))
 
-  // Export-Handler für Toolbar
-  const handleExport = (format) => {
-    if (format === 'csv')   downloadCSV(exportData, 'uebersicht_asins.csv')
-    if (format === 'excel') downloadExcel(exportData, 'uebersicht_asins.xlsx', 'Übersicht')
-    if (format === 'pdf')   downloadPDF('Top ASINs nach Umsatz', asinTotals, PDF_COLS)
-  }
+  useMemo(() => { if (onExport) onExport.current = (fmt) => {
+    if (fmt==='csv')   downloadCSV(exportData,'uebersicht.csv')
+    if (fmt==='excel') downloadExcel(exportData,'uebersicht.xlsx','Übersicht')
+    if (fmt==='pdf')   downloadPDF('Top ASINs nach Umsatz',asinTotals,PDF_COLS)
+  }}, [asinTotals])
 
-  // onExport nach oben weiterreichen
-  useMemo(() => { if (onExport) onExport.current = handleExport }, [asinTotals])
+  const kpis = [
+    { label:'Umsatz gesamt',  val:eur(totals.revenue),      info:KPI_INFO.revenue   },
+    { label:'Bestellungen',   val:fmt(totals.orders),        info:KPI_INFO.orders    },
+    { label:'Einheiten',      val:fmt(totals.units),         info:KPI_INFO.units     },
+    { label:'Sessions',       val:fmt(totals.sessions),      info:KPI_INFO.sessions  },
+    { label:'Seitenaufrufe',  val:fmt(totals.pageviews),     info:KPI_INFO.pageviews },
+    { label:'Conversionrate', val:`${fmt(totals.cvr,1)}%`,   info:KPI_INFO.cvr       },
+  ]
 
   return (
     <div>
       <div className="kpi-grid">
-        <div className="kpi"><div className="kpi-label">Umsatz gesamt</div><div className="kpi-val">{eur(totals.revenue)}</div></div>
-        <div className="kpi"><div className="kpi-label">Bestellungen</div><div className="kpi-val">{fmt(totals.orders)}</div></div>
-        <div className="kpi"><div className="kpi-label">Einheiten</div><div className="kpi-val">{fmt(totals.units)}</div></div>
-        <div className="kpi"><div className="kpi-label">Sessions</div><div className="kpi-val">{fmt(totals.sessions)}</div></div>
-        <div className="kpi"><div className="kpi-label">Seitenaufrufe</div><div className="kpi-val">{fmt(totals.pageviews)}</div></div>
-        <div className="kpi"><div className="kpi-label">Conversionrate</div><div className="kpi-val">{fmt(totals.cvr,1)}%</div></div>
+        {kpis.map(k => (
+          <div key={k.label} className="kpi">
+            <div className="kpi-label" style={{display:'flex',alignItems:'center'}}>
+              {k.label}
+              <InfoTooltip text={k.info}/>
+            </div>
+            <div className="kpi-val">{k.val}</div>
+          </div>
+        ))}
       </div>
 
       <div className="card-grid">
         <div className="card">
           <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:'1rem'}}>
-            <div className="card-title" style={{margin:0}}>Umsatz täglich</div>
+            <div style={{display:'flex',alignItems:'center',gap:4}}>
+              <div className="card-title" style={{margin:0}}>Umsatz täglich</div>
+              <InfoTooltip text={'Quelle: Brand Analytics (SP-API)\nTäglicher Produktumsatz im gewählten Zeitraum.\nBei Monatsfilter: Aggregation auf Tagesebene.'} position="right"/>
+            </div>
             <button className="chart-btn" onClick={()=>downloadChartPNG(revenueRef,'umsatz.png')}>↓ PNG</button>
           </div>
           <div className="chart-box"><Line ref={revenueRef} data={chartData} options={opts}/></div>
         </div>
         <div className="card">
           <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:'1rem'}}>
-            <div className="card-title" style={{margin:0}}>Sessions & Seitenaufrufe</div>
+            <div style={{display:'flex',alignItems:'center',gap:4}}>
+              <div className="card-title" style={{margin:0}}>Sessions & Seitenaufrufe</div>
+              <InfoTooltip text={'Quelle: Brand Analytics (SP-API)\nSessions = einzigartige Besucher\nSeitenaufrufe = Gesamtaufrufe\nEin Besucher kann mehrere Seiten aufrufen.'} position="right"/>
+            </div>
             <button className="chart-btn" onClick={()=>downloadChartPNG(sessionsRef,'sessions.png')}>↓ PNG</button>
           </div>
           <div className="chart-box"><Line ref={sessionsRef} data={sessionsChart} options={opts2}/></div>
@@ -139,7 +152,10 @@ export default function Overview({ data, onExport }) {
 
       <div className="card">
         <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:'1rem'}}>
-          <div className="card-title" style={{margin:0}}>Top ASINs ({asinTotals.length})</div>
+          <div style={{display:'flex',alignItems:'center',gap:4}}>
+            <div className="card-title" style={{margin:0}}>Top ASINs ({asinTotals.length})</div>
+            <InfoTooltip text={'Quelle: Verkäufe & Traffic (SP-API)\nAggregiert nach Child-ASIN über den gewählten Zeitraum.\nBuy Box % und Bestellrate sind Durchschnittswerte.'} position="right"/>
+          </div>
           <div style={{display:'flex',gap:6}}>
             <button className="chart-btn" onClick={()=>downloadCSV(exportData,'uebersicht.csv')}>↓ CSV</button>
             <button className="chart-btn" onClick={()=>downloadExcel(exportData,'uebersicht.xlsx','Übersicht')}>↓ Excel</button>
