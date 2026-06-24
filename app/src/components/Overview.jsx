@@ -11,7 +11,7 @@ Chart.register(CategoryScale, LinearScale, PointElement, LineElement, Filler, To
 const fmt = (n,d=0) => n==null||isNaN(n)?'–':new Intl.NumberFormat('de-DE',{minimumFractionDigits:d,maximumFractionDigits:d}).format(n)
 const eur = n => `€${fmt(n)}`
 
-function valToDateStr(val) {
+function toStr(val) {
   if (!val) return null
   if (val instanceof Date) {
     if (isNaN(val)) return null
@@ -22,14 +22,7 @@ function valToDateStr(val) {
     if (isNaN(d)) return null
     return `${d.getUTCFullYear()}-${String(d.getUTCMonth()+1).padStart(2,'0')}-${String(d.getUTCDate()).padStart(2,'0')}`
   }
-  if (typeof val === 'string') {
-    if (/^\d{2}\.\d{2}\.\d{4}$/.test(val)) {
-      const [d,m,y] = val.split('.')
-      return `${y}-${m}-${d}`
-    }
-    return val.slice(0,10)
-  }
-  return null
+  return String(val).slice(0,10)
 }
 
 const PDF_COLS = [
@@ -59,11 +52,10 @@ export default function Overview({ data, onExport }) {
     filterByDate(rawBrand, 'startDate')
   , [rawBrand, filterByDate])
 
-  // Filtere Traffic-Zeilen VOR der Aggregation
   const trafficFiltered = useMemo(() => {
     let rows = rawTraffic
 
-    // ASIN-Filter: exakter Match für ASIN-Format, sonst substring
+    // ASIN-Filter: exakter Match für ASINs
     if (asinFilter.trim()) {
       const terms = asinFilter.trim()
         .split(/[\n,\s]+/)
@@ -71,24 +63,20 @@ export default function Overview({ data, onExport }) {
         .filter(s => s.length >= 2)
       if (terms.length) {
         rows = rows.filter(r => {
-          const asin = (r['Child ASIN'] || r['Parent ASIN'] || '').toString().toUpperCase().trim()
-          return terms.some(t => /^B[0-9A-Z]{9}$/i.test(t) ? asin === t : asin.includes(t))
+          const asin = (r['Child ASIN']||r['Parent ASIN']||'').toString().toUpperCase().trim()
+          return terms.some(t => /^B[0-9A-Z]{9}$/i.test(t) ? asin===t : asin.includes(t))
         })
       }
     }
 
-    // Datumsfilter mit Überlappungslogik:
-    // Zeile einschließen wenn Von <= dateTo UND Bis >= dateFrom
+    // Datumsfilter: Zeile einschließen wenn Von <= dateTo UND Bis >= dateFrom
     if (dateFrom || dateTo) {
       rows = rows.filter(r => {
-        const von = valToDateStr(r['Von'])
-        const bis = valToDateStr(r['Bis'])
-        // Wenn beide fehlen: einschließen
+        const von = toStr(r['Von'])
+        const bis = toStr(r['Bis'])
         if (!von && !bis) return true
-        // Bis muss >= dateFrom sein
         if (dateFrom && bis && bis < dateFrom) return false
-        // Von muss <= dateTo sein
-        if (dateTo && von && von > dateTo) return false
+        if (dateTo   && von && von > dateTo)   return false
         return true
       })
     }
@@ -96,29 +84,26 @@ export default function Overview({ data, onExport }) {
     return rows
   }, [rawTraffic, asinFilter, dateFrom, dateTo])
 
-  // Aggregiere nach ASIN
   const asinRaw = useMemo(() => {
     const map = {}
     trafficFiltered.forEach(r => {
-      const asin = r['Child ASIN'] || r['Parent ASIN'] || '–'
-      if (asin === '–') return
-      if (!map[asin]) map[asin] = { asin, revenue:0, orders:0, sessions:0, buybox:[], rate:[], bisValues:[] }
+      const asin = r['Child ASIN']||r['Parent ASIN']||'–'
+      if (asin==='–') return
+      if (!map[asin]) map[asin] = { asin, revenue:0, orders:0, sessions:0, buybox:[], rate:[], bisVals:[] }
       map[asin].revenue  += Number(r['Umsatz (EUR)'])||0
       map[asin].orders   += Number(r['Bestellungen'])||0
       map[asin].sessions += Number(r['Sessions'])||0
-      if (r['Buy Box %']   != null) map[asin].buybox.push(Number(r['Buy Box %']))
-      if (r['Bestellrate %']!= null) map[asin].rate.push(Number(r['Bestellrate %']))
-      if (r['Bis']) map[asin].bisValues.push(valToDateStr(r['Bis']))
+      if (r['Buy Box %']!=null)     map[asin].buybox.push(Number(r['Buy Box %']))
+      if (r['Bestellrate %']!=null) map[asin].rate.push(Number(r['Bestellrate %']))
+      const b = toStr(r['Bis'])
+      if (b) map[asin].bisVals.push(b)
     })
-    return Object.values(map).map(a => ({
+    return Object.values(map).map(a=>({
       ...a,
       titel:    getTitle(a.asin),
       buybox:   a.buybox.length ? +(a.buybox.reduce((s,v)=>s+v,0)/a.buybox.length).toFixed(1) : null,
       rate:     a.rate.length   ? +(a.rate.reduce((s,v)=>s+v,0)/a.rate.length).toFixed(1)     : null,
-      // Neuestes Bis-Datum als Zeitraumangabe
-      zeitraum: a.bisValues.length
-        ? fmtMonth(a.bisValues.sort().reverse()[0])
-        : '–',
+      zeitraum: a.bisVals.length ? fmtMonth(a.bisVals.sort().reverse()[0]) : '–',
     }))
   }, [trafficFiltered, getTitle])
 
@@ -195,7 +180,7 @@ export default function Overview({ data, onExport }) {
           <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:'1rem'}}>
             <div style={{display:'flex',alignItems:'center',gap:4}}>
               <div className="card-title" style={{margin:0}}>Umsatz täglich</div>
-              <InfoTooltip text={'Quelle: Brand Analytics (SP-API)\nTäglicher Umsatz.'} position="right"/>
+              <InfoTooltip text={'Quelle: Brand Analytics (SP-API)\nTäglicher Umsatz im gewählten Zeitraum.'} position="right"/>
             </div>
             <button className="chart-btn" onClick={()=>downloadChartPNG(revenueRef,'umsatz.png')}>↓ PNG</button>
           </div>
@@ -205,7 +190,7 @@ export default function Overview({ data, onExport }) {
           <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:'1rem'}}>
             <div style={{display:'flex',alignItems:'center',gap:4}}>
               <div className="card-title" style={{margin:0}}>Sessions & Seitenaufrufe</div>
-              <InfoTooltip text={'Quelle: Brand Analytics (SP-API)\nSessions = einzigartige Besucher'} position="right"/>
+              <InfoTooltip text={'Quelle: Brand Analytics (SP-API)\nSessions = einzigartige Besucher\nSeitenaufrufe = Gesamtaufrufe'} position="right"/>
             </div>
             <button className="chart-btn" onClick={()=>downloadChartPNG(sessionsRef,'sessions.png')}>↓ PNG</button>
           </div>
@@ -217,7 +202,7 @@ export default function Overview({ data, onExport }) {
         <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:'1rem'}}>
           <div style={{display:'flex',alignItems:'center',gap:4}}>
             <div className="card-title" style={{margin:0}}>Top ASINs ({asinTotals.length})</div>
-            <InfoTooltip text={'Quelle: Verkäufe & Traffic / Nach ASIN (SP-API)\nDatumsfilter prüft ob der Berichtszeitraum (Von–Bis) den gewählten Zeitraum überschneidet.'} position="right"/>
+            <InfoTooltip text={'Quelle: Verkäufe & Traffic (SP-API)\nHistorisch: monatliche Daten. Aktuell: tagesaktuelle Daten.\nDatumsfilter: Zeitraum muss sich mit Von–Bis überschneiden.'} position="right"/>
           </div>
           <div style={{display:'flex',gap:6}}>
             <button className="chart-btn" onClick={()=>downloadCSV(exportData,'uebersicht.csv')}>↓ CSV</button>
@@ -240,18 +225,21 @@ export default function Overview({ data, onExport }) {
               </tr>
             </thead>
             <tbody>
-              {asinTotals.slice(0,50).map((a,i)=>(
-                <tr key={i}>
-                  <td><code style={{fontSize:11}}>{a.asin}</code></td>
-                  <td style={{maxWidth:220,overflow:'hidden',textOverflow:'ellipsis',fontSize:12}} title={a.titel}>{getShortTitle(a.asin,35)}</td>
-                  <td style={{fontSize:12,color:'var(--tx2)'}}>{a.zeitraum}</td>
-                  <td><strong>{eur(a.revenue)}</strong></td>
-                  <td>{fmt(a.orders)}</td>
-                  <td>{fmt(a.sessions)}</td>
-                  <td>{a.rate!=null?<span className={`badge ${a.rate>=15?'badge-green':a.rate>=8?'badge-amber':'badge-red'}`}>{a.rate}%</span>:'–'}</td>
-                  <td>{a.buybox!=null?<span className={`badge ${a.buybox>=80?'badge-green':a.buybox>=50?'badge-amber':'badge-red'}`}>{a.buybox}%</span>:'–'}</td>
-                </tr>
-              ))}
+              {asinTotals.length === 0
+                ? <tr><td colSpan={8} style={{textAlign:'center',padding:'2rem',color:'var(--tx3)'}}>Keine Daten für diesen Zeitraum</td></tr>
+                : asinTotals.slice(0,50).map((a,i)=>(
+                  <tr key={i}>
+                    <td><code style={{fontSize:11}}>{a.asin}</code></td>
+                    <td style={{maxWidth:220,overflow:'hidden',textOverflow:'ellipsis',fontSize:12}} title={a.titel}>{getShortTitle(a.asin,35)}</td>
+                    <td style={{fontSize:12,color:'var(--tx2)'}}>{a.zeitraum}</td>
+                    <td><strong>{eur(a.revenue)}</strong></td>
+                    <td>{fmt(a.orders)}</td>
+                    <td>{fmt(a.sessions)}</td>
+                    <td>{a.rate!=null?<span className={`badge ${a.rate>=15?'badge-green':a.rate>=8?'badge-amber':'badge-red'}`}>{a.rate}%</span>:'–'}</td>
+                    <td>{a.buybox!=null?<span className={`badge ${a.buybox>=80?'badge-green':a.buybox>=50?'badge-amber':'badge-red'}`}>{a.buybox}%</span>:'–'}</td>
+                  </tr>
+                ))
+              }
             </tbody>
           </table>
         </div>
