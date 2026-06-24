@@ -3,7 +3,7 @@ import { Bar } from 'react-chartjs-2'
 import { Chart, CategoryScale, LinearScale, BarElement, Tooltip, Legend } from 'chart.js'
 import { useFilters } from '../context/FilterContext.jsx'
 import { downloadCSV, downloadChartPNG } from '../utils/export.js'
-import { useSortable } from '../utils/sort.js'
+import { useSortable } from '../utils/sort.jsx'
 
 Chart.register(CategoryScale, LinearScale, BarElement, Tooltip, Legend)
 
