@@ -2,7 +2,7 @@ import { createContext, useContext, useState, useMemo } from 'react'
 
 const FilterContext = createContext(null)
 
-export function FilterProvider({ children, catalog = [] }) {
+export function FilterProvider({ children, catalog = [], uploadedFiles = [] }) {
   const [dateFrom,   setDateFrom]   = useState('')
   const [dateTo,     setDateTo]     = useState('')
   const [asinFilter, setAsinFilter] = useState('')
@@ -28,7 +28,10 @@ export function FilterProvider({ children, catalog = [] }) {
     return rows.filter(r => {
       const d = r[dateCol]
       if (!d) return true
-      const date = typeof d === 'string' ? d.slice(0, 10) : new Date(d).toISOString().slice(0, 10)
+      const date = d instanceof Date
+        ? d.toISOString().slice(0, 10)
+        : typeof d === 'string' ? d.slice(0, 10)
+        : new Date(d).toISOString().slice(0, 10)
       if (dateFrom && date < dateFrom) return false
       if (dateTo   && date > dateTo)   return false
       return true
@@ -48,7 +51,9 @@ export function FilterProvider({ children, catalog = [] }) {
     <FilterContext.Provider value={{
       dateFrom, setDateFrom, dateTo, setDateTo,
       asinFilter, setAsinFilter,
-      getTitle, getShortTitle, filterByDate, filterByAsin,
+      getTitle, getShortTitle,
+      filterByDate, filterByAsin,
+      uploadedFiles,
     }}>
       {children}
     </FilterContext.Provider>
