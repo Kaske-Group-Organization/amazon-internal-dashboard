@@ -2,27 +2,28 @@ import { createContext, useContext, useState, useMemo } from 'react'
 
 const FilterContext = createContext(null)
 
-// Timezone-sicheres Date-Parsing
 function toDateStr(val) {
   if (val == null) return null
   if (val instanceof Date) {
     if (isNaN(val)) return null
-    // Lokales Datum verwenden (nicht UTC) um Timezone-Bugs zu vermeiden
     const y = val.getFullYear()
     const m = String(val.getMonth() + 1).padStart(2, '0')
     const d = String(val.getDate()).padStart(2, '0')
     return `${y}-${m}-${d}`
   }
   if (typeof val === 'number') {
-    // Excel Serial Date → UTC (Excel zählt ab 1900-01-01)
     const d = new Date(Math.round((val - 25569) * 86400 * 1000))
     if (isNaN(d)) return null
-    const y = d.getUTCFullYear()
-    const mo = String(d.getUTCMonth() + 1).padStart(2, '0')
-    const day = String(d.getUTCDate()).padStart(2, '0')
-    return `${y}-${mo}-${day}`
+    return `${d.getUTCFullYear()}-${String(d.getUTCMonth()+1).padStart(2,'0')}-${String(d.getUTCDate()).padStart(2,'0')}`
   }
-  if (typeof val === 'string') return val.slice(0, 10)
+  if (typeof val === 'string') {
+    // DD.MM.YYYY → YYYY-MM-DD
+    if (/^\d{2}\.\d{2}\.\d{4}$/.test(val)) {
+      const [d,m,y] = val.split('.')
+      return `${y}-${m}-${d}`
+    }
+    return val.slice(0, 10)
+  }
   return null
 }
 
@@ -37,8 +38,7 @@ export const fmtMonth = (val) => {
   const s = toDateStr(val)
   if (!s) return '–'
   const [y, m] = s.split('-').map(Number)
-  const months = ['Jan','Feb','Mär','Apr','Mai','Jun','Jul','Aug','Sep','Okt','Nov','Dez']
-  return `${months[m-1]} ${y}`
+  return `${['Jan','Feb','Mär','Apr','Mai','Jun','Jul','Aug','Sep','Okt','Nov','Dez'][m-1]} ${y}`
 }
 
 export function FilterProvider({ children, catalog = [], uploadedFiles = [] }) {
@@ -48,9 +48,7 @@ export function FilterProvider({ children, catalog = [], uploadedFiles = [] }) {
 
   const catalogMap = useMemo(() => {
     const m = new Map()
-    catalog.forEach(r => {
-      if (r.asin) m.set(r.asin.trim().toUpperCase(), r.title || '')
-    })
+    catalog.forEach(r => { if (r.asin) m.set(r.asin.trim().toUpperCase(), r.title || '') })
     return m
   }, [catalog])
 
@@ -68,9 +66,8 @@ export function FilterProvider({ children, catalog = [], uploadedFiles = [] }) {
   const filterByDate = (rows, dateCol) => {
     if (!dateFrom && !dateTo) return rows
     return rows.filter(r => {
-      const raw  = r[dateCol]
-      const date = toDateStr(raw)
-      if (!date) return true // kein Datum → nicht filtern
+      const date = toDateStr(r[dateCol])
+      if (!date) return true
       if (dateFrom && date < dateFrom) return false
       if (dateTo   && date > dateTo)   return false
       return true
@@ -81,9 +78,9 @@ export function FilterProvider({ children, catalog = [], uploadedFiles = [] }) {
     const raw = asinFilter.trim()
     if (!raw) return rows
 
-    // Mehrere ASINs: Komma- oder zeilengetrennt
+    // Komma, Zeilenumbruch ODER Leerzeichen als Trenner
     const terms = raw
-      .split(/[\n,]+/)
+      .split(/[\n,\s]+/)
       .map(s => s.trim().toUpperCase())
       .filter(Boolean)
 
@@ -94,8 +91,7 @@ export function FilterProvider({ children, catalog = [], uploadedFiles = [] }) {
         asinCols.some(col => {
           const val = r[col]?.toString().toUpperCase() ?? ''
           if (val.includes(term)) return true
-          const title = getTitle(r[col] ?? '').toUpperCase()
-          return title.includes(term)
+          return getTitle(r[col] ?? '').toUpperCase().includes(term)
         })
       )
     )
