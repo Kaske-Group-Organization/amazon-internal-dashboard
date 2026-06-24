@@ -6,9 +6,9 @@ function toDateStr(val) {
   if (val == null) return null
   if (val instanceof Date) {
     if (isNaN(val)) return null
-    const y = val.getFullYear()
-    const m = String(val.getMonth()+1).padStart(2,'0')
-    const d = String(val.getDate()).padStart(2,'0')
+    const y = val.getUTCFullYear()
+    const m = String(val.getUTCMonth()+1).padStart(2,'0')
+    const d = String(val.getUTCDate()).padStart(2,'0')
     return `${y}-${m}-${d}`
   }
   if (typeof val === 'number') {
