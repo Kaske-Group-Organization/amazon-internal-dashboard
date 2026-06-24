@@ -29,9 +29,9 @@ export function FilterProvider({ children, catalog = [], uploadedFiles = [] }) {
       const d = r[dateCol]
       if (!d) return true
       const date = d instanceof Date
-        ? d.toISOString().slice(0, 10)
-        : typeof d === 'string' ? d.slice(0, 10)
-        : new Date(d).toISOString().slice(0, 10)
+        ? d.toISOString().slice(0,10)
+        : typeof d === 'string' ? d.slice(0,10)
+        : new Date(d).toISOString().slice(0,10)
       if (dateFrom && date < dateFrom) return false
       if (dateTo   && date > dateTo)   return false
       return true
@@ -49,7 +49,8 @@ export function FilterProvider({ children, catalog = [], uploadedFiles = [] }) {
 
   return (
     <FilterContext.Provider value={{
-      dateFrom, setDateFrom, dateTo, setDateTo,
+      dateFrom, setDateFrom,
+      dateTo,   setDateTo,
       asinFilter, setAsinFilter,
       getTitle, getShortTitle,
       filterByDate, filterByAsin,
