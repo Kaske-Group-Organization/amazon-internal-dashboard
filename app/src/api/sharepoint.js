@@ -20,7 +20,6 @@ async function fetchDataset(key) {
   return result
 }
 
-// Zwei Datensätze laden und nach Sheet mergen
 async function fetchAndMerge(currentKey, histKey, sheetName) {
   const [current, hist] = await Promise.allSettled([
     fetchDataset(currentKey),
@@ -28,17 +27,14 @@ async function fetchAndMerge(currentKey, histKey, sheetName) {
   ])
   const currentRows = current.status === 'fulfilled' ? (current.value[sheetName] ?? []) : []
   const histRows    = hist.status    === 'fulfilled' ? (hist.value[sheetName]    ?? []) : []
-
-  // Deduplizieren: Historisch als Basis, aktuell überschreibt
-  const merged = [...histRows, ...currentRows]
-  return { [sheetName]: merged }
+  return { [sheetName]: [...histRows, ...currentRows] }
 }
 
 export const api = {
-  ads:    () => fetchDataset('ads'),
-  brand:  () => fetchDataset('brand'),
-  basket: () => fetchDataset('basket'),
-  catalog:() => fetchDataset('catalog'),
+  ads:     () => fetchDataset('ads'),
+  brand:   () => fetchDataset('brand'),
+  basket:  () => fetchDataset('basket'),
+  catalog: () => fetchDataset('catalog'),
 
   repeat() {
     return fetchAndMerge('repeat', 'repeat_hist', 'RepeatPurchase')
@@ -49,8 +45,10 @@ export const api = {
   searchQuery() {
     return fetchAndMerge('searchquery', 'searchquery_hist', 'SearchQueryPerformance')
   },
-  traffic() {
-    return fetchAndMerge('traffic', 'traffic_hist', 'Nach ASIN')
+  // Traffic: Nutze "Nach Datum+ASIN" für tagesaktuelle ASIN-Daten
+  async traffic() {
+    const current = await fetchDataset('traffic').catch(() => ({}))
+    return current
   },
 
   async loadAll() {
