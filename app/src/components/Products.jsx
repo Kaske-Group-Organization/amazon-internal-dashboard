@@ -42,79 +42,79 @@ export default function Products({ data }) {
   )
 
   return (
-    <div>
-      <div className="card-grid">
+    <div style={{display:'flex',flexDirection:'column',gap:'1rem'}}>
 
-        <div className="card">
-          <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:'1rem'}}>
-            <div className="card-title" style={{margin:0}}>Wiederkaufsrate ({repeatSorted.length})</div>
-            <button className="chart-btn" onClick={exportRepeat}>↓ CSV</button>
-          </div>
-          <div className="tbl-wrap">
-            <table>
-              <thead>
-                <tr>
-                  <th>ASIN</th>
-                  <th>Produktname</th>
-                  <th>Käufe</th>
-                  <th>Wiederkäufe</th>
-                  <th>Rate</th>
-                </tr>
-              </thead>
-              <tbody>
-                {repeatSorted.map((r,i) => (
-                  <tr key={i}>
-                    <td><code style={{fontSize:11}}>{r.asin}</code></td>
-                    <td style={{maxWidth:180,overflow:'hidden',textOverflow:'ellipsis',fontSize:12}} title={getTitle(r.asin)}>{getShortTitle(r.asin,28)}</td>
-                    <td>{fmt(r.purchases)}</td>
-                    <td>{fmt(r.repeatPurchases)}</td>
-                    <td>
-                      <div style={{display:'flex',alignItems:'center',gap:8}}>
-                        <div className="bar-wrap" style={{flex:1}}>
-                          <div className="bar-fill" style={{width:`${Math.min(r.rate,100)}%`,background:r.rate>=50?'#10B981':r.rate>=25?'#F59E0B':'#EF4444'}}/>
-                        </div>
-                        <span className={`badge ${r.rate>=50?'badge-green':r.rate>=25?'badge-amber':'badge-red'}`}>{pct(r.rate)}</span>
+      <div className="card">
+        <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:'1rem'}}>
+          <div className="card-title" style={{margin:0}}>Wiederkaufsrate ({repeatSorted.length})</div>
+          <button className="chart-btn" onClick={exportRepeat}>↓ CSV</button>
+        </div>
+        <div className="tbl-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>ASIN</th>
+                <th>Produktname</th>
+                <th>Käufe</th>
+                <th>Wiederkäufe</th>
+                <th>Rate</th>
+              </tr>
+            </thead>
+            <tbody>
+              {repeatSorted.map((r,i) => (
+                <tr key={i}>
+                  <td><code style={{fontSize:11}}>{r.asin}</code></td>
+                  <td style={{maxWidth:280,overflow:'hidden',textOverflow:'ellipsis',fontSize:12}} title={getTitle(r.asin)}>{getShortTitle(r.asin,45)}</td>
+                  <td>{fmt(r.purchases)}</td>
+                  <td>{fmt(r.repeatPurchases)}</td>
+                  <td>
+                    <div style={{display:'flex',alignItems:'center',gap:8}}>
+                      <div className="bar-wrap" style={{flex:1,minWidth:80}}>
+                        <div className="bar-fill" style={{width:`${Math.min(r.rate,100)}%`,background:r.rate>=50?'var(--green)':r.rate>=25?'var(--amber)':'var(--red)'}}/>
                       </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
-
-        <div className="card">
-          <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:'1rem'}}>
-            <div className="card-title" style={{margin:0}}>Market Basket ({basketTop.length})</div>
-            <button className="chart-btn" onClick={exportBasket}>↓ CSV</button>
-          </div>
-          <div className="tbl-wrap">
-            <table>
-              <thead>
-                <tr>
-                  <th>Produkt</th>
-                  <th>Titel</th>
-                  <th>Gekauft mit</th>
-                  <th>Rang</th>
-                  <th>Combo %</th>
+                      <span className={`badge ${r.rate>=50?'badge-green':r.rate>=25?'badge-amber':'badge-red'}`}>{pct(r.rate)}</span>
+                    </div>
+                  </td>
                 </tr>
-              </thead>
-              <tbody>
-                {basketTop.map((r,i) => (
-                  <tr key={i}>
-                    <td><code style={{fontSize:11}}>{r.asin}</code></td>
-                    <td style={{maxWidth:140,overflow:'hidden',textOverflow:'ellipsis',fontSize:12}} title={getTitle(r.asin)}>{getShortTitle(r.asin,22)}</td>
-                    <td><code style={{fontSize:11}}>{r.pairedWith}</code></td>
-                    <td><span className="badge badge-blue">#{r.rank}</span></td>
-                    <td><strong>{pct(r.pct)}</strong></td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+              ))}
+            </tbody>
+          </table>
         </div>
-
       </div>
+
+      <div className="card">
+        <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:'1rem'}}>
+          <div className="card-title" style={{margin:0}}>Market Basket – häufig zusammen gekauft ({basketTop.length})</div>
+          <button className="chart-btn" onClick={exportBasket}>↓ CSV</button>
+        </div>
+        <div className="tbl-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Produkt</th>
+                <th>Titel</th>
+                <th>Gekauft mit</th>
+                <th>Titel (mit)</th>
+                <th>Rang</th>
+                <th>Combo %</th>
+              </tr>
+            </thead>
+            <tbody>
+              {basketTop.map((r,i) => (
+                <tr key={i}>
+                  <td><code style={{fontSize:11}}>{r.asin}</code></td>
+                  <td style={{maxWidth:200,overflow:'hidden',textOverflow:'ellipsis',fontSize:12}} title={getTitle(r.asin)}>{getShortTitle(r.asin,28)}</td>
+                  <td><code style={{fontSize:11}}>{r.pairedWith}</code></td>
+                  <td style={{maxWidth:200,overflow:'hidden',textOverflow:'ellipsis',fontSize:12}} title={getTitle(r.pairedWith)}>{getShortTitle(r.pairedWith,28)}</td>
+                  <td><span className="badge badge-blue">#{r.rank}</span></td>
+                  <td><strong>{pct(r.pct)}</strong></td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
     </div>
   )
 }
