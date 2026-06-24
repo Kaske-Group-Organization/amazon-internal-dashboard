@@ -15,14 +15,24 @@ function toStr(val) {
   if (!val) return null
   if (val instanceof Date) {
     if (isNaN(val)) return null
-    return `${val.getFullYear()}-${String(val.getMonth()+1).padStart(2,'0')}-${String(val.getDate()).padStart(2,'0')}`
+    const y = val.getUTCFullYear()
+    const m = String(val.getUTCMonth()+1).padStart(2,'0')
+    const d = String(val.getUTCDate()).padStart(2,'0')
+    return `${y}-${m}-${d}`
   }
   if (typeof val === 'number') {
     const d = new Date(Math.round((val-25569)*86400*1000))
     if (isNaN(d)) return null
     return `${d.getUTCFullYear()}-${String(d.getUTCMonth()+1).padStart(2,'0')}-${String(d.getUTCDate()).padStart(2,'0')}`
   }
-  return String(val).slice(0,10)
+  if (typeof val === 'string') {
+    if (/^\d{2}\.\d{2}\.\d{4}$/.test(val)) {
+      const [d,m,y] = val.split('.')
+      return `${y}-${m}-${d}`
+    }
+    return val.slice(0,10)
+  }
+  return null
 }
 
 const PDF_COLS = [
@@ -55,7 +65,7 @@ export default function Overview({ data, onExport }) {
   const trafficFiltered = useMemo(() => {
     let rows = rawTraffic
 
-    // ASIN-Filter: exakter Match für ASINs
+    // ASIN-Filter
     if (asinFilter.trim()) {
       const terms = asinFilter.trim()
         .split(/[\n,\s]+/)
@@ -69,7 +79,7 @@ export default function Overview({ data, onExport }) {
       }
     }
 
-    // Datumsfilter: Zeile einschließen wenn Von <= dateTo UND Bis >= dateFrom
+    // Datumsfilter mit Overlap-Logik
     if (dateFrom || dateTo) {
       rows = rows.filter(r => {
         const von = toStr(r['Von'])
@@ -145,7 +155,11 @@ export default function Overview({ data, onExport }) {
   const opts  = {responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},scales:{x:{ticks:{font:{size:10},maxTicksLimit:10}},y:{ticks:{font:{size:10}}}}}
   const opts2 = {...opts,plugins:{legend:{display:true,labels:{boxWidth:10,font:{size:11}}}}}
 
-  const exportData = asinTotals.map(a=>({'ASIN':a.asin,'Produktname':a.titel,'Zeitraum':a.zeitraum,'Umsatz (€)':a.revenue,'Bestellungen':a.orders,'Sessions':a.sessions,'Bestellrate %':a.rate??'','Buy Box %':a.buybox??''}))
+  const exportData = asinTotals.map(a=>({
+    'ASIN':a.asin,'Produktname':a.titel,'Zeitraum':a.zeitraum,
+    'Umsatz (€)':a.revenue,'Bestellungen':a.orders,'Sessions':a.sessions,
+    'Bestellrate %':a.rate??'','Buy Box %':a.buybox??'',
+  }))
 
   useMemo(()=>{ if(onExport) onExport.current=(format)=>{
     if(format==='csv')   downloadCSV(exportData,'uebersicht.csv')
@@ -202,7 +216,7 @@ export default function Overview({ data, onExport }) {
         <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:'1rem'}}>
           <div style={{display:'flex',alignItems:'center',gap:4}}>
             <div className="card-title" style={{margin:0}}>Top ASINs ({asinTotals.length})</div>
-            <InfoTooltip text={'Quelle: Verkäufe & Traffic (SP-API)\nHistorisch: monatliche Daten. Aktuell: tagesaktuelle Daten.\nDatumsfilter: Zeitraum muss sich mit Von–Bis überschneiden.'} position="right"/>
+            <InfoTooltip text={'Quelle: Verkäufe & Traffic / Nach ASIN (SP-API)\nHistorisch: monatliche Aggregation. Aktuell: tagesaktuelle Daten.\nDatumsfilter: Zeitraum muss sich mit Von–Bis überschneiden.'} position="right"/>
           </div>
           <div style={{display:'flex',gap:6}}>
             <button className="chart-btn" onClick={()=>downloadCSV(exportData,'uebersicht.csv')}>↓ CSV</button>
