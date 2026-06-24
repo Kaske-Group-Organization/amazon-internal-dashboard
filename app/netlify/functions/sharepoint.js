@@ -13,6 +13,11 @@ const FILE_MAP = {
   searchquery:   'Search Query Performance/SearchQueryPerformance_All.xlsx',
   traffic:       'Verkaufe Traffic Monatlich/VerkaufeTraffic_Monatlich.xlsx',
   catalog:       'Produkt_Katalog/Produkt_Katalog.xlsx',
+  // Historische Daten
+  repeat_hist:        'Historisch/RepeatPurchase_All.xlsx',
+  searchcatalog_hist: 'Historisch/SearchCatalogPerformance_All.xlsx',
+  searchquery_hist:   'Historisch/SearchQueryPerformance_All.xlsx',
+  traffic_hist:       'Historisch/VerkaufeTraffic_Monatlich.xlsx',
 }
 
 async function getToken() {
