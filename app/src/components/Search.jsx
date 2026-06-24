@@ -1,7 +1,7 @@
 import { useMemo } from 'react'
 import { useFilters, fmtDate } from '../context/FilterContext.jsx'
 import { downloadCSV } from '../utils/export.js'
-import { useSortable } from '../utils/sort.js'
+import { useSortable } from '../utils/sort.jsx'
 
 const fmt = (n,d=0) => n==null||isNaN(n)?'–':new Intl.NumberFormat('de-DE',{minimumFractionDigits:d,maximumFractionDigits:d}).format(n)
 const eur = n => `€${fmt(n,2)}`
