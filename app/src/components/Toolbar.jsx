@@ -1,9 +1,11 @@
-import { useState } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import { useFilters } from '../context/FilterContext.jsx'
+import DateRangePicker from './DateRangePicker.jsx'
 
-const fmtDate = d => {
-  if (!d) return null
-  return new Date(d + 'T00:00:00').toLocaleDateString('de-DE', { month: 'short', year: '2-digit' })
+const fmtDate = s => {
+  if (!s) return null
+  const [y,m,d] = s.split('-').map(Number)
+  return `${d}. ${['Jan','Feb','Mär','Apr','Mai','Jun','Jul','Aug','Sep','Okt','Nov','Dez'][m-1]} ${String(y).slice(2)}`
 }
 
 const IconSearch   = () => <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
@@ -15,21 +17,19 @@ export default function Toolbar({ pageTitle = 'Übersicht' }) {
   const { dateFrom, setDateFrom, dateTo, setDateTo, asinFilter, setAsinFilter } = useFilters()
   const [showDate,   setShowDate]   = useState(false)
   const [showSearch, setShowSearch] = useState(false)
+  const pickerRef = useRef()
+
+  useEffect(() => {
+    const handler = (e) => {
+      if (pickerRef.current && !pickerRef.current.contains(e.target)) setShowDate(false)
+    }
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [])
 
   const dateLabel = dateFrom || dateTo
     ? `${fmtDate(dateFrom) ?? '...'} – ${fmtDate(dateTo) ?? '...'}`
     : null
-
-  const setPreset = (months, year) => {
-    if (year) { setDateFrom(`${year}-01-01`); setDateTo(`${year}-12-31`) }
-    else {
-      const to = new Date(), from = new Date()
-      from.setMonth(from.getMonth() + months)
-      setDateFrom(from.toISOString().slice(0,10))
-      setDateTo(to.toISOString().slice(0,10))
-    }
-    setShowDate(false)
-  }
 
   return (
     <div className="toolbar">
@@ -50,7 +50,8 @@ export default function Toolbar({ pageTitle = 'Übersicht' }) {
             className="toolbar-search-input"
           />
           {asinFilter && (
-            <button style={{background:'none',border:'none',cursor:'pointer',color:'var(--tx3)'}} onClick={() => { setAsinFilter(''); setShowSearch(false) }}>
+            <button style={{background:'none',border:'none',cursor:'pointer',color:'var(--tx3)',display:'flex'}}
+              onClick={() => { setAsinFilter(''); setShowSearch(false) }}>
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
             </button>
           )}
@@ -59,39 +60,26 @@ export default function Toolbar({ pageTitle = 'Übersicht' }) {
         <button className="toolbar-icon-btn" onClick={() => setShowSearch(true)} title="Suchen"><IconSearch/></button>
       )}
 
-      {/* Date Filter */}
-      <div className="toolbar-section">
-        <button className={`toolbar-date-btn ${dateLabel ? 'active' : ''}`} onClick={() => setShowDate(!showDate)}>
+      {/* Date picker */}
+      <div className="toolbar-section" ref={pickerRef}>
+        <button
+          className={`toolbar-date-btn ${dateLabel ? 'active' : ''}`}
+          onClick={() => setShowDate(!showDate)}
+        >
           <IconCalendar/>
           <span>{dateLabel ?? 'Zeitraum'}</span>
         </button>
         {showDate && (
-          <div className="toolbar-dropdown" style={{right:0,left:'auto'}}>
-            <div className="date-picker-row">
-              <div><label>Von</label><input type="date" value={dateFrom} onChange={e=>setDateFrom(e.target.value)}/></div>
-              <div><label>Bis</label><input type="date" value={dateTo}   onChange={e=>setDateTo(e.target.value)}/></div>
-            </div>
-            <div className="date-presets">
-              <button onClick={()=>setPreset(-1)}>Letzter Monat</button>
-              <button onClick={()=>setPreset(-3)}>3 Monate</button>
-              <button onClick={()=>setPreset(-6)}>6 Monate</button>
-              <button onClick={()=>setPreset(null,2025)}>2025</button>
-              <button onClick={()=>setPreset(null,2026)}>2026</button>
-            </div>
-            {(dateFrom||dateTo) && (
-              <button onClick={()=>{setDateFrom('');setDateTo('');setShowDate(false)}}
-                style={{marginTop:8,fontSize:12,color:'var(--red)',background:'none',border:'none',cursor:'pointer',fontFamily:'Source Sans 3,sans-serif'}}>
-                ✕ Filter löschen
-              </button>
-            )}
-          </div>
+          <DateRangePicker
+            dateFrom={dateFrom}
+            dateTo={dateTo}
+            onChange={(from, to) => { setDateFrom(from); setDateTo(to) }}
+            onClose={() => setShowDate(false)}
+          />
         )}
       </div>
 
-      {/* Filter */}
       <button className="toolbar-icon-btn" title="Filter"><IconFilter/></button>
-
-      {/* Download */}
       <button className="toolbar-icon-btn" title="CSV herunterladen"><IconDownload/></button>
     </div>
   )
