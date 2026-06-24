@@ -13,48 +13,57 @@ const eur = n => `€${fmt(n,2)}`
 const pct = n => `${fmt(n,1)}%`
 
 const KPI_INFO = {
-  spend:  'Quelle: Amazon Ads API (Search Terms Report)\nGesamte Werbeausgaben im gewählten Zeitraum.',
-  sales:  'Quelle: Amazon Ads API (Search Terms Report)\nUmsatz der direkt auf Werbeanzeigen zurückzuführen ist (14-Tage Attribution).',
-  acos:   'Quelle: Amazon Ads API\nBerechnung: Ad Spend ÷ Ad Sales × 100\nZiel: Unter dem Ziel-ACoS bleiben (typisch 20–30%).',
-  roas:   'Quelle: Amazon Ads API\nBerechnung: Ad Sales ÷ Ad Spend\nZeigt wie viel € Umsatz pro € Werbebudget erzielt wird.',
-  clicks: 'Quelle: Amazon Ads API (Search Terms Report)\nGesamtanzahl der Klicks auf Werbeanzeigen.',
-  ctr:    'Quelle: Amazon Ads API\nBerechnung: Klicks ÷ Impressions × 100\nBranchenüblich: 0,3–0,5% ist normal.',
+  spend:  'Quelle: Amazon Ads API\nGesamte Werbeausgaben.',
+  sales:  'Quelle: Amazon Ads API\nUmsatz durch Werbung (14-Tage Attribution).',
+  acos:   'Quelle: Amazon Ads API\nAd Spend ÷ Ad Sales × 100',
+  roas:   'Quelle: Amazon Ads API\nAd Sales ÷ Ad Spend',
+  clicks: 'Quelle: Amazon Ads API\nAnzahl der Klicks auf Anzeigen.',
+  ctr:    'Quelle: Amazon Ads API\nKlicks ÷ Impressions × 100',
 }
 
 export default function Advertising({ data }) {
-  const { filterByAsin } = useFilters()
+  const { asinFilter } = useFilters()
   const chartRef = useRef()
 
-  const campaigns = data.ads?.campaigns ?? []
-  const keywords  = data.ads?.Keywords  ?? []
+  const allTerms    = data.ads?.SearchTerms ?? []
+  const allCampaigns = data.ads?.campaigns  ?? []
+  const allKeywords  = data.ads?.Keywords   ?? []
 
-  const rawTerms = useMemo(() =>
-    filterByAsin(data.ads?.SearchTerms ?? [], ['query'])
-  , [data.ads, filterByAsin])
+  // Search Terms: Filter nach Query (kein ASIN in Ads-Daten)
+  const searchTerms = useMemo(() => {
+    let rows = allTerms
+    if (asinFilter.trim()) {
+      const terms = asinFilter.trim().split(/[\n,\s]+/).map(s=>s.trim().toUpperCase()).filter(s=>s.length>=2)
+      if (terms.length) {
+        rows = rows.filter(r => terms.some(t => (r.query??'').toUpperCase().includes(t)))
+      }
+    }
+    return rows
+  }, [allTerms, asinFilter])
 
   const termsData = useMemo(() =>
-    rawTerms.map(r => ({
+    searchTerms.map(r => ({
       query:       r.query ?? '–',
-      date:        r.date ? fmtDate(r.date) : r.reportDate ? fmtDate(r.reportDate) : '–',
+      date:        r.date ? fmtDate(r.date) : r.reportDate ? fmtDate(r.reportDate) : r.startDate ? fmtDate(r.startDate) : '–',
       impressions: Number(r.impressions)||0,
       clicks:      Number(r.clicks)||0,
       spend:       Number(r.spend)||0,
       sales:       Number(r.sales)||0,
       acos:        Number(r.sales)>0 ? Number(r.spend)/Number(r.sales)*100 : null,
     }))
-  , [rawTerms])
+  , [searchTerms])
 
   const campData = useMemo(() =>
-    campaigns.map(c => ({
+    allCampaigns.map(c=>({
       ...c,
       startDateFmt: c.startDate ? fmtDate(c.startDate) : '–',
       endDateFmt:   c.endDate   ? fmtDate(c.endDate)   : '–',
     }))
-  , [campaigns])
+  , [allCampaigns])
 
   const { sorted: sortedTerms, Th: TermTh } = useSortable(termsData, 'sales',  'desc')
   const { sorted: sortedCamp,  Th: CampTh  } = useSortable(campData,  'budget', 'desc')
-  const { sorted: sortedKw,    Th: KwTh    } = useSortable(keywords,  'bid',    'desc')
+  const { sorted: sortedKw,    Th: KwTh    } = useSortable(allKeywords,'bid',   'desc')
 
   const totals = useMemo(() => {
     const spend  = termsData.reduce((s,r)=>s+r.spend,0)
@@ -79,32 +88,23 @@ export default function Advertising({ data }) {
     }
   }, [termsData])
 
-  const chartOpts = {
-    responsive:true, maintainAspectRatio:false,
-    plugins:{legend:{display:true,labels:{boxWidth:10,font:{size:11}}}},
-    scales:{x:{ticks:{font:{size:9},maxRotation:35}},y:{ticks:{font:{size:10}}}}
-  }
-
-  const exportTerms = () => downloadCSV(
-    sortedTerms.map(t=>({Query:t.query,Datum:t.date,Impressions:t.impressions,Klicks:t.clicks,'Spend (€)':t.spend.toFixed(2),'Sales (€)':t.sales.toFixed(2),'ACoS %':t.acos?.toFixed(1)??'∞'})),
-    'search_terms.csv'
-  )
-  const exportCamp = () => downloadCSV(
-    sortedCamp.map(c=>({Name:c.name,Status:c.state,Start:c.startDateFmt,Ende:c.endDateFmt,'Budget/Tag':c.budget})),
-    'kampagnen.csv'
-  )
+  const chartOpts = {responsive:true,maintainAspectRatio:false,plugins:{legend:{display:true,labels:{boxWidth:10,font:{size:11}}}},scales:{x:{ticks:{font:{size:9},maxRotation:35}},y:{ticks:{font:{size:10}}}}}
 
   const kpis = [
-    { label:'Ad Spend', val:eur(totals.spend),        info:KPI_INFO.spend  },
-    { label:'Ad Sales', val:eur(totals.sales),        info:KPI_INFO.sales  },
-    { label:'ACoS',     val:pct(totals.acos),         info:KPI_INFO.acos   },
-    { label:'ROAS',     val:`${fmt(totals.roas,2)}x`, info:KPI_INFO.roas   },
-    { label:'Klicks',   val:fmt(totals.clicks),       info:KPI_INFO.clicks },
-    { label:'CTR',      val:pct(totals.ctr),          info:KPI_INFO.ctr    },
+    {label:'Ad Spend', val:eur(totals.spend),        info:KPI_INFO.spend },
+    {label:'Ad Sales', val:eur(totals.sales),        info:KPI_INFO.sales },
+    {label:'ACoS',     val:pct(totals.acos),         info:KPI_INFO.acos  },
+    {label:'ROAS',     val:`${fmt(totals.roas,2)}x`, info:KPI_INFO.roas  },
+    {label:'Klicks',   val:fmt(totals.clicks),       info:KPI_INFO.clicks},
+    {label:'CTR',      val:pct(totals.ctr),          info:KPI_INFO.ctr   },
   ]
 
   return (
     <div>
+      <div style={{background:'#FEF3C7',border:'1px solid #F59E0B',borderRadius:'var(--r)',padding:'10px 14px',marginBottom:'1rem',fontSize:12,color:'#92400E'}}>
+        ℹ️ Amazon Ads Search Terms enthalten keine ASIN-Zuordnung. Filter nach Query-Begriff möglich. Datumsfilter wird von der Ads-API nicht unterstützt.
+      </div>
+
       <div className="kpi-grid">
         {kpis.map(k=>(
           <div key={k.label} className="kpi">
@@ -121,7 +121,7 @@ export default function Advertising({ data }) {
           <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:'1rem'}}>
             <div style={{display:'flex',alignItems:'center',gap:4}}>
               <div className="card-title" style={{margin:0}}>Spend vs. Sales – Top 8</div>
-              <InfoTooltip text={'Quelle: Amazon Ads API (Search Terms Report)\nVergleich Werbeausgaben vs. erzielter Umsatz der 8 stärksten Search Terms.'} position="right"/>
+              <InfoTooltip text={'Quelle: Amazon Ads API (Search Terms)\nVergleich Werbeausgaben vs. erzielter Umsatz.'} position="right"/>
             </div>
             <button className="chart-btn" onClick={()=>downloadChartPNG(chartRef,'ads_chart.png')}>↓ PNG</button>
           </div>
@@ -133,10 +133,10 @@ export default function Advertising({ data }) {
         <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:'1rem'}}>
           <div style={{display:'flex',alignItems:'center',gap:4}}>
             <div className="card-title" style={{margin:0}}>Search Terms ({sortedTerms.length})</div>
-            <InfoTooltip text={'Quelle: Amazon Ads API (Search Terms Report)\nWelche Suchbegriffe Klicks und Käufe ausgelöst haben.\nACoS = Spend ÷ Sales × 100'} position="right"/>
+            <InfoTooltip text={'Quelle: Amazon Ads API\nSuchbegriffe die Klicks und Käufe ausgelöst haben.'} position="right"/>
           </div>
           <div style={{display:'flex',gap:6}}>
-            <button className="chart-btn" onClick={exportTerms}>↓ CSV</button>
+            <button className="chart-btn" onClick={()=>downloadCSV(sortedTerms,'search_terms.csv')}>↓ CSV</button>
             <button className="chart-btn" onClick={()=>downloadExcel(sortedTerms,'search_terms.xlsx','Search Terms')}>↓ Excel</button>
           </div>
         </div>
@@ -178,9 +178,9 @@ export default function Advertising({ data }) {
           <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:'1rem'}}>
             <div style={{display:'flex',alignItems:'center',gap:4}}>
               <div className="card-title" style={{margin:0}}>Kampagnen ({sortedCamp.length})</div>
-              <InfoTooltip text={'Quelle: Amazon Ads API (Campaigns)\nAlle Kampagnen mit Budget, Status und Laufzeit.'} position="right"/>
+              <InfoTooltip text={'Quelle: Amazon Ads API\nAlle Kampagnen mit Budget und Laufzeit.'} position="right"/>
             </div>
-            <button className="chart-btn" onClick={exportCamp}>↓ CSV</button>
+            <button className="chart-btn" onClick={()=>downloadCSV(sortedCamp,'kampagnen.csv')}>↓ CSV</button>
           </div>
           <div className="tbl-wrap">
             <table>
@@ -207,11 +207,10 @@ export default function Advertising({ data }) {
             </table>
           </div>
         </div>
-
         <div className="card">
           <div style={{display:'flex',alignItems:'center',gap:4,marginBottom:'1rem'}}>
             <div className="card-title" style={{margin:0}}>Keywords</div>
-            <InfoTooltip text={'Quelle: Amazon Ads API (Keywords)\nAlle gebuchten Keywords mit Match-Type und aktuellem Bid.'} position="right"/>
+            <InfoTooltip text={'Quelle: Amazon Ads API\nGebuchte Keywords mit Match-Type und Bid.'} position="right"/>
           </div>
           <div className="tbl-wrap">
             <table>
