@@ -3,6 +3,7 @@ import { Bar } from 'react-chartjs-2'
 import { Chart, CategoryScale, LinearScale, BarElement, Tooltip, Legend } from 'chart.js'
 import { useFilters } from '../context/FilterContext.jsx'
 import { downloadCSV, downloadChartPNG } from '../utils/export.js'
+import { useSortable } from '../utils/sort.js'
 
 Chart.register(CategoryScale, LinearScale, BarElement, Tooltip, Legend)
 
@@ -16,57 +17,47 @@ export default function Advertising({ data }) {
 
   const campaigns   = data.ads?.campaigns ?? []
   const keywords    = data.ads?.Keywords  ?? []
-  const searchTerms = useMemo(() => filterByAsin(data.ads?.SearchTerms ?? [], ['query']), [data.ads, filterByAsin])
+  const rawTerms    = useMemo(() => filterByAsin(data.ads?.SearchTerms??[], ['query']), [data.ads, filterByAsin])
+
+  const termsData = useMemo(() =>
+    rawTerms.map(r => ({
+      query:       r.query ?? '–',
+      impressions: Number(r.impressions)||0,
+      clicks:      Number(r.clicks)||0,
+      spend:       Number(r.spend)||0,
+      sales:       Number(r.sales)||0,
+      acos:        Number(r.sales)>0 ? Number(r.spend)/Number(r.sales)*100 : null,
+      cvr:         Number(r.clicks)>0 ? Number(r.orders||0)/Number(r.clicks)*100 : null,
+    }))
+  , [rawTerms])
+
+  const { sorted: sortedTerms, Th: TermTh } = useSortable(termsData, 'sales', 'desc')
+  const { sorted: sortedCamp,  Th: CampTh  } = useSortable(campaigns, 'budget', 'desc')
+  const { sorted: sortedKw,    Th: KwTh    } = useSortable(keywords, 'bid', 'desc')
 
   const totals = useMemo(() => {
-    const spend  = searchTerms.reduce((s,r) => s+(Number(r.spend)||0), 0)
-    const sales  = searchTerms.reduce((s,r) => s+(Number(r.sales)||0), 0)
-    const clicks = searchTerms.reduce((s,r) => s+(Number(r.clicks)||0), 0)
-    const impr   = searchTerms.reduce((s,r) => s+(Number(r.impressions)||0), 0)
-    return {
-      spend, sales, clicks, impr,
-      acos: sales > 0 ? spend/sales*100 : 0,
-      roas: spend > 0 ? sales/spend : 0,
-      ctr:  impr  > 0 ? clicks/impr*100 : 0
-    }
-  }, [searchTerms])
-
-  const topTerms = useMemo(() =>
-    [...searchTerms].map(r => ({
-      query: r.query,
-      impressions: Number(r.impressions)||0,
-      clicks: Number(r.clicks)||0,
-      spend: Number(r.spend)||0,
-      sales: Number(r.sales)||0,
-      acos: Number(r.sales) > 0 ? Number(r.spend)/Number(r.sales)*100 : null,
-    })).sort((a,b) => b.sales - a.sales).slice(0, 20)
-  , [searchTerms])
+    const spend  = termsData.reduce((s,r)=>s+r.spend,0)
+    const sales  = termsData.reduce((s,r)=>s+r.sales,0)
+    const clicks = termsData.reduce((s,r)=>s+r.clicks,0)
+    const impr   = termsData.reduce((s,r)=>s+r.impressions,0)
+    return { spend, sales, clicks, impr, acos:sales>0?spend/sales*100:0, roas:spend>0?sales/spend:0, ctr:impr>0?clicks/impr*100:0 }
+  }, [termsData])
 
   const chartData = useMemo(() => {
-    const t = topTerms.slice(0,8)
+    const top8 = [...termsData].sort((a,b)=>b.sales-a.sales).slice(0,8)
     return {
-      labels: t.map(x => x.query?.slice(0,18) ?? '–'),
-      datasets: [
-        { label:'Spend (€)', data:t.map(x => +x.spend.toFixed(2)), backgroundColor:'rgba(20,184,166,0.5)' },
-        { label:'Sales (€)', data:t.map(x => +x.sales.toFixed(2)), backgroundColor:'rgba(14,165,233,0.5)' },
+      labels: top8.map(x => x.query?.slice(0,18)??'–'),
+      datasets:[
+        {label:'Spend (€)',data:top8.map(x=>+x.spend.toFixed(2)),backgroundColor:'rgba(0,131,173,0.5)'},
+        {label:'Sales (€)',data:top8.map(x=>+x.sales.toFixed(2)),backgroundColor:'rgba(0,255,229,0.4)'},
       ]
     }
-  }, [topTerms])
+  }, [termsData])
 
-  const chartOpts = {
-    responsive: true, maintainAspectRatio: false,
-    plugins: { legend: { display:true, labels:{ boxWidth:10, font:{size:11} } } },
-    scales: { x:{ ticks:{ font:{size:9}, maxRotation:35 } }, y:{ ticks:{ font:{size:10} } } }
-  }
+  const chartOpts = {responsive:true,maintainAspectRatio:false,plugins:{legend:{display:true,labels:{boxWidth:10,font:{size:11}}}},scales:{x:{ticks:{font:{size:9},maxRotation:35}},y:{ticks:{font:{size:10}}}}}
 
-  const exportTerms = () => downloadCSV(
-    topTerms.map(t => ({ Query:t.query, Impressions:t.impressions, Klicks:t.clicks, 'Spend (€)':t.spend.toFixed(2), 'Sales (€)':t.sales.toFixed(2), 'ACoS %':t.acos?.toFixed(1)??'∞' })),
-    'search_terms.csv'
-  )
-  const exportCamp = () => downloadCSV(
-    campaigns.map(c => ({ Name:c.name, Status:c.state, 'Budget/Tag':c.budget })),
-    'kampagnen.csv'
-  )
+  const exportTerms = () => downloadCSV(sortedTerms.map(t=>({Query:t.query,Impressions:t.impressions,Klicks:t.clicks,'Spend (€)':t.spend.toFixed(2),'Sales (€)':t.sales.toFixed(2),'ACoS %':t.acos?.toFixed(1)??'∞'})),'search_terms.csv')
+  const exportCamp  = () => downloadCSV(sortedCamp.map(c=>({Name:c.name,Status:c.state,'Budget/Tag':c.budget})),'kampagnen.csv')
 
   return (
     <div>
@@ -79,11 +70,11 @@ export default function Advertising({ data }) {
         <div className="kpi"><div className="kpi-label">CTR</div><div className="kpi-val">{pct(totals.ctr)}</div></div>
       </div>
 
-      <div className="card-grid">
+      <div className="card-grid" style={{marginBottom:'1rem'}}>
         <div className="card card-full">
           <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:'1rem'}}>
-            <div className="card-title" style={{margin:0}}>Spend vs. Sales – Top Search Terms</div>
-            <button className="chart-btn" onClick={() => downloadChartPNG(chartRef,'ads_chart.png')}>↓ PNG</button>
+            <div className="card-title" style={{margin:0}}>Spend vs. Sales – Top 8</div>
+            <button className="chart-btn" onClick={()=>downloadChartPNG(chartRef,'ads_chart.png')}>↓ PNG</button>
           </div>
           <div className="chart-box"><Bar ref={chartRef} data={chartData} options={chartOpts}/></div>
         </div>
@@ -91,28 +82,30 @@ export default function Advertising({ data }) {
 
       <div className="card" style={{marginBottom:'1rem'}}>
         <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:'1rem'}}>
-          <div className="card-title" style={{margin:0}}>Search Terms ({topTerms.length})</div>
+          <div className="card-title" style={{margin:0}}>Search Terms ({sortedTerms.length})</div>
           <button className="chart-btn" onClick={exportTerms}>↓ CSV</button>
         </div>
         <div className="tbl-wrap">
           <table>
             <thead>
-              <tr><th>Query</th><th>Impressions</th><th>Klicks</th><th>Spend</th><th>Sales</th><th>ACoS</th></tr>
+              <tr>
+                <TermTh col="query"       label="Query"/>
+                <TermTh col="impressions" label="Impressions"/>
+                <TermTh col="clicks"      label="Klicks"/>
+                <TermTh col="spend"       label="Spend"/>
+                <TermTh col="sales"       label="Sales"/>
+                <TermTh col="acos"        label="ACoS"/>
+              </tr>
             </thead>
             <tbody>
-              {topTerms.map((t,i) => (
+              {sortedTerms.slice(0,100).map((t,i)=>(
                 <tr key={i}>
                   <td style={{maxWidth:220,overflow:'hidden',textOverflow:'ellipsis'}}>{t.query}</td>
                   <td>{fmt(t.impressions)}</td>
                   <td>{fmt(t.clicks)}</td>
                   <td>{eur(t.spend)}</td>
                   <td>{eur(t.sales)}</td>
-                  <td>
-                    {t.acos == null
-                      ? <span className="badge badge-red">∞</span>
-                      : <span className={`badge ${t.acos<25?'badge-green':t.acos<35?'badge-amber':'badge-red'}`}>{pct(t.acos)}</span>
-                    }
-                  </td>
+                  <td>{t.acos==null?<span className="badge badge-red">∞</span>:<span className={`badge ${t.acos<25?'badge-green':t.acos<35?'badge-amber':'badge-red'}`}>{pct(t.acos)}</span>}</td>
                 </tr>
               ))}
             </tbody>
@@ -123,14 +116,14 @@ export default function Advertising({ data }) {
       <div className="card-grid">
         <div className="card">
           <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:'1rem'}}>
-            <div className="card-title" style={{margin:0}}>Kampagnen ({campaigns.length})</div>
+            <div className="card-title" style={{margin:0}}>Kampagnen ({sortedCamp.length})</div>
             <button className="chart-btn" onClick={exportCamp}>↓ CSV</button>
           </div>
           <div className="tbl-wrap">
             <table>
-              <thead><tr><th>Name</th><th>Status</th><th>Budget/Tag</th></tr></thead>
+              <thead><tr><CampTh col="name" label="Name"/><CampTh col="state" label="Status"/><CampTh col="budget" label="Budget/Tag"/></tr></thead>
               <tbody>
-                {campaigns.slice(0,10).map((c,i) => (
+                {sortedCamp.slice(0,20).map((c,i)=>(
                   <tr key={i}>
                     <td style={{maxWidth:200,overflow:'hidden',textOverflow:'ellipsis'}}>{c.name}</td>
                     <td><span className={`badge ${c.state==='ENABLED'?'badge-green':'badge-gray'}`}>{c.state}</span></td>
@@ -142,12 +135,12 @@ export default function Advertising({ data }) {
           </div>
         </div>
         <div className="card">
-          <div className="card-title">Top Keywords</div>
+          <div className="card-title">Keywords</div>
           <div className="tbl-wrap">
             <table>
-              <thead><tr><th>Keyword</th><th>Match</th><th>Bid</th><th>Status</th></tr></thead>
+              <thead><tr><KwTh col="keywordText" label="Keyword"/><KwTh col="matchType" label="Match"/><KwTh col="bid" label="Bid"/><KwTh col="state" label="Status"/></tr></thead>
               <tbody>
-                {[...keywords].sort((a,b) => (Number(b.bid)||0)-(Number(a.bid)||0)).slice(0,10).map((k,i) => (
+                {sortedKw.slice(0,20).map((k,i)=>(
                   <tr key={i}>
                     <td style={{maxWidth:150,overflow:'hidden',textOverflow:'ellipsis'}}>{k.keywordText}</td>
                     <td><span className="badge badge-blue">{k.matchType}</span></td>
